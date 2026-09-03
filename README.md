@@ -156,16 +156,5 @@ npx expo start
 
 ---
 
-## 📋 Implementation Roadmap
-- [x] **Phase 00: Project Initialization & Foundation**
-- [ ] **Phase 01: App Foundation & Design System**
-- [ ] **Phase 02: Backend Foundation & Auth**
-- [ ] **Phase 03: Database & Schema Models**
-- [ ] **Phase 04: Secure Cloud Storage & Media Pipeline**
-- [ ] **Phase 05: Patient Episode & Consultation Journey**
-- [ ] **Phase 06: Clinical History & Longitudinal Timeline**
-- [ ] **Phase 07: Document Intelligence & OCR Engine**
-- [ ] **Phase 08: Risk Scoring & Safety Triaging**
-- [ ] **Phase 09: Dynamic Care Pathways**
 - [ ] **Phase 10: Doctor Collaboration & Follow-up Outcomes**
 - [ ] **Phase 11: External Integrations & ABDM Compliance**
