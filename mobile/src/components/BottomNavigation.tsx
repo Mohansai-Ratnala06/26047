@@ -63,8 +63,8 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
             iconName = isFocused ? 'folder' : 'folder-outline';
             label = 'Records';
           } else if (route.name === 'Consultation') {
-            iconName = isFocused ? 'videocam' : 'videocam-outline';
-            label = 'Consult';
+            iconName = isFocused ? 'shield-checkmark' : 'shield-checkmark-outline';
+            label = isFocused ? 'My Consents' : 'Consents';
           } else if (route.name === 'Profile') {
             iconName = isFocused ? 'person' : 'person-outline';
             label = 'Profile';

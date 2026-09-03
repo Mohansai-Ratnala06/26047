@@ -14,6 +14,7 @@ export const config: AppConfig = {
   mongodbUri: process.env.MONGODB_URI,
   awsRegion: process.env.AWS_REGION || 'ap-south-1',
   awsS3Bucket: process.env.AWS_S3_BUCKET,
+  sttApiUrl: process.env.STT_API_URL || 'http://localhost:5001',
 };
 
 export default config;

@@ -13,3 +13,6 @@ export async function checkBackendHealth(): Promise<HealthStatus | null> {
     return null;
   }
 }
+
+export { sttApi } from './sttApi';
+export * from './sttApi';

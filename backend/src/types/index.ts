@@ -25,6 +25,7 @@ export interface AppConfig {
   mongodbUri?: string;
   awsRegion?: string;
   awsS3Bucket?: string;
+  sttApiUrl?: string;
 }
 
 // Extended request interface for patient-resolved routes
