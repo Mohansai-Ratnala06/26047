@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Production and build outputs
+dist/
+build/
+coverage/
+.vite/
+web-build/
+
+# Expo & React Native
+.expo/
+.expo-shared/
+
+# Environment files and secrets
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+.env.development
+*.pem
+*.key
+*.cert
+
+# Preserve safe environment templates
+!.env.example
+!**/.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# System & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
