@@ -26,6 +26,7 @@ export interface AppConfig {
   awsRegion?: string;
   awsS3Bucket?: string;
   sttApiUrl?: string;
+  brainServiceUrl?: string;
 }
 
 // Extended request interface for patient-resolved routes

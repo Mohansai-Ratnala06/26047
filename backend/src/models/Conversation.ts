@@ -11,6 +11,10 @@ export interface IConversation extends Document {
   status: ConversationStatus;
   startedAt: Date;
   completedAt?: Date;
+  stateSnapshot?: Record<string, any>;
+  clinicalStatus?: string;
+  immediateAttentionRequired?: boolean;
+  clinicalOutput?: Record<string, any>;
   metadata: {
     aiModel?: string;
     modelVersion?: string;
@@ -45,6 +49,10 @@ const ConversationSchema = new Schema<IConversation>(
     },
     startedAt: { type: Date, default: Date.now },
     completedAt: { type: Date },
+    stateSnapshot: { type: Schema.Types.Mixed },
+    clinicalStatus: { type: String },
+    immediateAttentionRequired: { type: Boolean, default: false },
+    clinicalOutput: { type: Schema.Types.Mixed },
     metadata: {
       aiModel: { type: String },
       modelVersion: { type: String },
