@@ -18,7 +18,9 @@ import { colors, spacing, typography, borderRadius, shadows } from '../../theme'
 import { Badge, Button, LoadingState, ErrorState } from '../../components';
 import { apiClient } from '../../api/apiClient';
 import { episodeApi } from '../../api/episodeApi';
+import { documentApi } from '../../api/documentApi';
 import { useAuthStore } from '../../store/authStore';
+import * as ImagePicker from 'expo-image-picker';
 
 // ==========================================
 // Types
@@ -256,6 +258,8 @@ export const RecordsScreen: React.FC = () => {
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [linkInfoModalVisible, setLinkInfoModalVisible] = useState(false);
   const [optionsModalVisible, setOptionsModalVisible] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState('');
 
   // Filters & Bookmarks
   const [bookmarkedIds, setBookmarkedIds] = useState<Record<string, boolean>>({});
@@ -434,6 +438,54 @@ export const RecordsScreen: React.FC = () => {
     setSelectedRecord(record);
     setOptionsModalVisible(true);
   };
+
+  const handleSelectDocument = async (docType: string) => {
+    try {
+      setUploadModalVisible(false);
+
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        alert('Permission to access photo gallery is required to upload medical documents.');
+        return;
+      }
+
+      const pickerResult = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.85,
+      });
+
+      if (pickerResult.canceled || !pickerResult.assets || pickerResult.assets.length === 0) {
+        return;
+      }
+
+      const asset = pickerResult.assets[0];
+      setIsUploading(true);
+      setUploadProgressText('Extracting clinical metadata with AI...');
+
+      const filename = asset.fileName || `document_${Date.now()}.jpg`;
+      const mimeType = asset.mimeType || 'image/jpeg';
+
+      const uploadResult = await documentApi.uploadDocument({
+        uri: asset.uri,
+        name: filename,
+        type: mimeType,
+        documentType: docType,
+      });
+
+      if (uploadResult?.success) {
+        setActiveTab('uploaded');
+        await fetchRecords(true);
+      }
+    } catch (err: any) {
+      console.warn('Document upload error:', err?.message || err);
+      alert(err?.message || 'Unable to upload document. Please check your connection.');
+    } finally {
+      setIsUploading(false);
+      setUploadProgressText('');
+    }
+  };
+
 
   return (
     <View style={styles.screenContainer}>
@@ -906,29 +958,31 @@ export const RecordsScreen: React.FC = () => {
                   title: 'Doctor Prescription',
                   subtitle: 'e-Rx slip, outpatient paper prescription',
                   icon: 'receipt-outline',
+                  type: 'prescription',
                 },
                 {
                   title: 'Laboratory / Pathology Report',
                   subtitle: 'Blood tests (CBC, LFT, KFT), urine test reports',
                   icon: 'flask-outline',
+                  type: 'laboratory_report',
                 },
                 {
                   title: 'Hospital Discharge Summary',
                   subtitle: 'Inpatient discharge notes and treatment summary',
                   icon: 'clipboard-outline',
+                  type: 'discharge_summary',
                 },
                 {
                   title: 'Diagnostic Imaging / Radiology',
                   subtitle: 'X-Ray, MRI, CT Scan, Ultrasound reports',
                   icon: 'scan-outline',
+                  type: 'imaging',
                 },
               ].map((item, index) => (
                 <TouchableOpacity
                   key={index}
                   activeOpacity={0.75}
-                  onPress={() => {
-                    setUploadModalVisible(false);
-                  }}
+                  onPress={() => handleSelectDocument(item.type)}
                   style={styles.uploadOptionItem}
                 >
                   <View style={styles.uploadOptionIconCircle}>
@@ -949,6 +1003,17 @@ export const RecordsScreen: React.FC = () => {
               onPress={() => setUploadModalVisible(false)}
               style={styles.modalDoneBtn}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Uploading / AI Extraction Spinner Modal */}
+      <Modal visible={isUploading} transparent animationType="fade">
+        <View style={styles.uploadingOverlay}>
+          <View style={styles.uploadingCard}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.uploadingTitle}>Analyzing with AI</Text>
+            <Text style={styles.uploadingSubtitle}>{uploadProgressText}</Text>
           </View>
         </View>
       </Modal>
@@ -1711,5 +1776,35 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.medium,
     color: colors.textPrimary,
   },
+
+  // Uploading / Processing Overlay Modal
+  uploadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  uploadingCard: {
+    width: '85%',
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: spacing.xl,
+    alignItems: 'center',
+    ...shadows.elevated,
+  },
+  uploadingTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    marginTop: spacing.md,
+  },
+  uploadingSubtitle: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
 });
+
 

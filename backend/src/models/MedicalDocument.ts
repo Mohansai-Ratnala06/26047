@@ -41,7 +41,16 @@ export interface IMedicalDocument extends Document {
     investigations?: string[];
     procedures?: string[];
     abnormalValues?: string[];
+    vitals?: Array<{ parameter: string; value: string; unit?: string | null }>;
+    advice?: string[];
   };
+  safetyAlerts?: Array<{
+    severity: string;
+    type: string;
+    message: string;
+  }>;
+  fhirBundle?: any;
+  brainAnalysis?: any;
   ocrMetadata?: {
     language?: string;
     confidence?: number;
@@ -100,7 +109,24 @@ const MedicalDocumentSchema = new Schema<IMedicalDocument>(
       investigations: [{ type: String }],
       procedures: [{ type: String }],
       abnormalValues: [{ type: String }],
+      vitals: [
+        {
+          parameter: { type: String },
+          value: { type: String },
+          unit: { type: String },
+        },
+      ],
+      advice: [{ type: String }],
     },
+    safetyAlerts: [
+      {
+        severity: { type: String },
+        type: { type: String },
+        message: { type: String },
+      },
+    ],
+    fhirBundle: { type: Schema.Types.Mixed },
+    brainAnalysis: { type: Schema.Types.Mixed },
     ocrMetadata: {
       language: { type: String },
       confidence: { type: Number },
