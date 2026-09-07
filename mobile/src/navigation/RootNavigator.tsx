@@ -25,6 +25,7 @@ const AppTheme = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 import { DoctorTabNavigator } from './DoctorTabNavigator';
+import { ClinicalResultsScreen } from '../screens/clinical';
 
 export const RootNavigator: React.FC = () => {
   const { isAuthenticated, isCheckingSession, startupCheck, user } = useAuthStore();
@@ -56,7 +57,10 @@ export const RootNavigator: React.FC = () => {
         ) : !user?.onboardingCompleted ? (
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         ) : (
-          <Stack.Screen name="Main" component={MainTabNavigator} />
+          <>
+            <Stack.Screen name="Main" component={MainTabNavigator} />
+            <Stack.Screen name="ClinicalResults" component={ClinicalResultsScreen} />
+          </>
         )}
       </Stack.Navigator>
     </NavigationContainer>

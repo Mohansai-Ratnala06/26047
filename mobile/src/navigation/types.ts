@@ -16,6 +16,11 @@ export type RootStackParamList = {
   Auth: undefined;
   Onboarding: undefined;
   Main: undefined;
+  ClinicalResults: {
+    clinicalOutput: Record<string, any>;
+    conversationId?: string;
+    source?: string;
+  };
 };
 
 export type DoctorTabParamList = {

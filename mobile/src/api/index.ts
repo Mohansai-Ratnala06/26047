@@ -1,6 +1,7 @@
 import { ApiResponse, HealthStatus } from '../types';
+import { API_BASE_URL } from './apiClient';
 
-export const API_BASE_URL = 'http://localhost:5000/api/v1';
+export { API_BASE_URL };
 
 export async function checkBackendHealth(): Promise<HealthStatus | null> {
   try {
@@ -16,3 +17,5 @@ export async function checkBackendHealth(): Promise<HealthStatus | null> {
 
 export { sttApi } from './sttApi';
 export * from './sttApi';
+export { conversationApi } from './conversationApi';
+export * from './conversationApi';

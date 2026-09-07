@@ -1,4 +1,4 @@
-import { IAuthService, AuthSession, LoginCredentials, SignUpData, AuthResponse } from './auth.types';
+import { IAuthService, AuthSession, LoginCredentials, SignUpData, AuthResponse, UserProfile } from './auth.types';
 import * as SecureStore from 'expo-secure-store';
 import { authApi } from '../../api/authApi';
 
@@ -26,9 +26,16 @@ class RealAuthService implements IAuthService {
       // Existing patient flow
       const response = await authApi.getMe();
       if (response?.success && response?.data) {
-        const user = {
-          ...response.data,
-          onboardingCompleted: response.data.onboardingCompleted ?? true,
+        const rawUser = response.data.user || response.data;
+        const user: UserProfile = {
+          id: rawUser.id || rawUser._id,
+          name: rawUser.name,
+          phone: rawUser.phone,
+          email: rawUser.email,
+          abhaId: rawUser.abhaId || response.data.patient?.identifiers?.abhaId,
+          createdAt: rawUser.createdAt || new Date().toISOString(),
+          onboardingCompleted: rawUser.onboardingCompleted ?? response.data.onboardingCompleted ?? true,
+          role: (rawUser.role || 'patient') as 'patient' | 'doctor',
         };
         await SecureStore.setItemAsync('auth_user', JSON.stringify(user));
         return {
