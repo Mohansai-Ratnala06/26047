@@ -19,3 +19,6 @@ export { sttApi } from './sttApi';
 export * from './sttApi';
 export { conversationApi } from './conversationApi';
 export * from './conversationApi';
+export { documentApi } from './documentApi';
+export * from './documentApi';
+

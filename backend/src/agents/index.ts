@@ -1,2 +1,3 @@
-// Agents layer - AI agents and clinical intelligence pipelines
-export {};
+export * from './PatientExplainerAgent';
+export * from './VisionExtractorAgent';
+export * from './BrainModelAgent';

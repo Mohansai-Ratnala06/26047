@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import {
   createDocument,
+  uploadDocument,
+  multerUpload,
   getDocumentsByPatient,
   getDocumentsByEpisode,
   updateExtractionStatus,
@@ -9,6 +11,7 @@ import { protect } from '../middleware/auth.middleware';
 
 const router = Router();
 
+router.post('/upload', protect, multerUpload.single('file'), uploadDocument as any);
 router.post('/', protect, createDocument as any);
 router.get('/', protect, getDocumentsByPatient as any);
 router.get('/episode/:episodeId', protect, getDocumentsByEpisode as any);

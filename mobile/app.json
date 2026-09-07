@@ -20,14 +20,27 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F172A"
       },
-      "package": "com.vaidyaarc.app"
+      "package": "com.vaidyaarc.app",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-secure-store",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Vaidyaarc to access your medical records and prescription photos."
+        }
+      ]
     ]
   }
 }
