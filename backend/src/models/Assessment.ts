@@ -60,6 +60,5 @@ const AssessmentSchema = new Schema<IAssessment>(
 
 AssessmentSchema.index({ patientId: 1 });
 AssessmentSchema.index({ episodeId: 1 });
-AssessmentSchema.index({ assessmentCode: 1 }, { unique: true });
 
 export default mongoose.model<IAssessment>('Assessment', AssessmentSchema);

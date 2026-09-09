@@ -50,7 +50,6 @@ const ConsentSchema = new Schema<IConsent>(
 );
 
 ConsentSchema.index({ patientId: 1, status: 1 });
-ConsentSchema.index({ consentCode: 1 }, { unique: true });
 ConsentSchema.index({ grantedTo: 1 });
 
 export default mongoose.model<IConsent>('Consent', ConsentSchema);

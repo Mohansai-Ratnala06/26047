@@ -79,7 +79,6 @@ const EpisodeSchema = new Schema<IEpisode>(
 );
 
 EpisodeSchema.index({ patientId: 1, status: 1 });
-EpisodeSchema.index({ episodeCode: 1 }, { unique: true });
 EpisodeSchema.index({ patientId: 1, createdAt: -1 });
 
 export default mongoose.model<IEpisode>('Episode', EpisodeSchema);

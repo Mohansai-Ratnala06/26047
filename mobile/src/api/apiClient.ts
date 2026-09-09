@@ -1,7 +1,22 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-export const API_BASE_URL = 'http://192.168.1.100:5000/api/v1';
+// Automatically detect the host computer's IP across any Wi-Fi network
+const getBaseUrl = (): string => {
+  const hostUri = Constants.expoConfig?.hostUri ?? (Constants as any).manifest?.debuggerHost;
+  if (hostUri) {
+    const hostIp = hostUri.split(':')[0];
+    return `http://${hostIp}:5000/api/v1`;
+  }
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:5000/api/v1';
+  }
+  return 'http://localhost:5000/api/v1';
+};
+
+export const API_BASE_URL = getBaseUrl();
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,

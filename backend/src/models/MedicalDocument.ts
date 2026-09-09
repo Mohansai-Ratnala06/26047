@@ -147,6 +147,5 @@ const MedicalDocumentSchema = new Schema<IMedicalDocument>(
 
 MedicalDocumentSchema.index({ patientId: 1 });
 MedicalDocumentSchema.index({ episodeId: 1 });
-MedicalDocumentSchema.index({ documentCode: 1 }, { unique: true });
 
 export default mongoose.model<IMedicalDocument>('MedicalDocument', MedicalDocumentSchema);

@@ -102,8 +102,6 @@ const PatientSchema = new Schema<IPatient>(
   { timestamps: true }
 );
 
-PatientSchema.index({ userId: 1 }, { unique: true });
-PatientSchema.index({ patientCode: 1 }, { unique: true });
 PatientSchema.index({ 'identifiers.abhaId': 1 }, { sparse: true });
 
 export default mongoose.model<IPatient>('Patient', PatientSchema);

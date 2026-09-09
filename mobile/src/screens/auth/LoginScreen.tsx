@@ -6,8 +6,8 @@ import { colors, spacing, typography } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
 
 export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
-  const [identifier, setIdentifier] = useState('+91 98765 43210');
-  const [password, setPassword] = useState('••••••••');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const { login, loading, error, clearError } = useAuthStore();
 

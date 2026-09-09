@@ -162,6 +162,4 @@ const HealthProfileSchema = new Schema<IHealthProfile>(
   { timestamps: true }
 );
 
-HealthProfileSchema.index({ patientId: 1 }, { unique: true });
-
 export default mongoose.model<IHealthProfile>('HealthProfile', HealthProfileSchema);
