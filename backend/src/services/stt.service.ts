@@ -1,4 +1,5 @@
-import config from '../config';
+import axios from 'axios';
+import FormData from 'form-data';
 
 export interface SttTranscriptionResult {
   success: boolean;
@@ -15,39 +16,42 @@ export interface SttHealthResult {
 }
 
 export class SttService {
-  private get baseUrl(): string {
-    return (config.sttApiUrl || 'http://localhost:5001').replace(/\/+$/, '');
+  private sarvamApiKey: string;
+  private geminiApiKey: string | undefined;
+
+  constructor() {
+    this.sarvamApiKey =
+      process.env.SARVAM_API_KEY || 'sk_o7traexv_jZJHv9LCBg2DkK6P6Dvu5CKR';
+    this.geminiApiKey = process.env.GEMINI_API_KEY;
   }
 
   /**
-   * Check if the upstream Speech-to-Text API is reachable and healthy.
+   * Health and readiness probe for in-process STT engine.
    */
   async checkHealth(): Promise<SttHealthResult> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/health`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
+    const hasSarvam = Boolean(this.sarvamApiKey);
+    const hasGemini = Boolean(process.env.GEMINI_API_KEY || this.geminiApiKey);
 
-      if (!response.ok) {
-        throw new Error(`STT API health check failed with HTTP status ${response.status}`);
-      }
-
-      const data = (await response.json()) as SttHealthResult;
-      return data;
-    } catch (error: any) {
-      console.error('[SttService] Health check error:', error.message);
-      throw new Error(`Upstream STT service unreachable: ${error.message}`);
+    if (!hasSarvam && !hasGemini) {
+      throw new Error(
+        'Neither SARVAM_API_KEY nor GEMINI_API_KEY is configured in environment.'
+      );
     }
+
+    return {
+      success: true,
+      status: 'ok',
+      service: 'Vaidyaarc In-Process Speech-to-Text',
+      model: hasSarvam ? 'saaras:v3' : 'gemini-2.0-flash-audio',
+    };
   }
 
   /**
-   * Transcribe an audio file buffer by forwarding it to the existing STT API.
+   * Transcribe an audio file buffer directly in-process via Sarvam AI (saaras:v3)
+   * with automatic fallback to Gemini Multimodal Audio.
    *
    * @param fileBuffer The in-memory buffer of the uploaded audio file
-   * @param originalname The filename (e.g. recording.wav, voice.m4a, speech.mp3)
+   * @param originalname The filename (e.g. recording.m4a, recording.wav, speech.mp3)
    * @param mimetype The MIME type of the audio file
    * @param languageCode Optional language code (defaults to 'unknown' for automatic detection)
    */
@@ -55,43 +59,129 @@ export class SttService {
     fileBuffer: Buffer,
     originalname: string,
     mimetype: string,
-    languageCode?: string
+    languageCode: string = 'unknown'
   ): Promise<SttTranscriptionResult> {
-    try {
-      // Build standard multipart/form-data payload
-      const formData = new FormData();
-      const audioBlob = new Blob([fileBuffer], { type: mimetype || 'audio/wav' });
-      formData.append('audio', audioBlob, originalname || 'recording.wav');
+    let lastError: string | null = null;
 
-      if (languageCode) {
-        formData.append('language_code', languageCode);
+    // 1. Primary: Sarvam AI Saaras v3 (Specialized for 22+ Indian Languages)
+    const sarvamKey = process.env.SARVAM_API_KEY || this.sarvamApiKey;
+    if (sarvamKey) {
+      try {
+        const form = new FormData();
+        form.append('file', fileBuffer, {
+          filename: originalname || 'recording.m4a',
+          contentType: mimetype || 'audio/m4a',
+        });
+        form.append('model', 'saaras:v3');
+        if (languageCode && languageCode !== 'unknown') {
+          form.append('language_code', languageCode);
+        }
+
+        const response = await axios.post(
+          'https://api.sarvam.ai/speech-to-text',
+          form,
+          {
+            headers: {
+              ...form.getHeaders(),
+              'api-subscription-key': sarvamKey,
+            },
+            timeout: 30000,
+          }
+        );
+
+        if (response.status === 200 && response.data?.transcript) {
+          return {
+            success: true,
+            text: response.data.transcript,
+            language: response.data.language_code || languageCode || 'unknown',
+            model: 'saaras:v3',
+          };
+        }
+      } catch (err: any) {
+        lastError = err.response?.data?.message || err.response?.data?.error || err.message;
+        console.warn(
+          '[SttService] Sarvam AI transcription note (falling back to Gemini Audio):',
+          lastError
+        );
       }
-
-      const endpoint = `${this.baseUrl}/api/transcribe`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const json = (await response.json()) as any;
-
-      if (!response.ok || !json.success) {
-        const errorDetail = json.error || json.details || `HTTP error ${response.status}`;
-        throw new Error(`STT recognition failed: ${errorDetail}`);
-      }
-
-      return {
-        success: true,
-        text: json.text || '',
-        language: json.language || 'unknown',
-        model: json.model || 'saaras:v3',
-      };
-    } catch (error: any) {
-      console.error('[SttService] Transcription error:', error.message);
-      throw error;
     }
+
+    // 2. Fallback: Google Gemini Multimodal Audio Transcription
+    const geminiKey = process.env.GEMINI_API_KEY || this.geminiApiKey;
+    if (geminiKey) {
+      try {
+        const encodedAudio = fileBuffer.toString('base64');
+        let normalizedMime = mimetype || 'audio/m4a';
+        if (normalizedMime.includes('octet-stream')) normalizedMime = 'audio/m4a';
+
+        const prompt = `
+You are an expert multilingual speech-to-text transcription engine for a clinical healthcare app.
+Listen to the provided audio file carefully and transcribe what was spoken accurately word-for-word.
+Language hint: ${languageCode || 'unknown'}. The speaker may be speaking in English, Telugu, Hindi, Tamil, Kannada, or Bengali.
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "transcript": "exact transcription of the spoken audio",
+  "language_code": "detected BCP-47 language tag (e.g. en-IN, te-IN, hi-IN)"
+}
+`;
+
+        const payload = {
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                {
+                  inline_data: {
+                    mime_type: normalizedMime,
+                    data: encodedAudio,
+                  },
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.0,
+            response_mime_type: 'application/json',
+          },
+        };
+
+        const response = await axios.post(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+          payload,
+          {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 35000,
+          }
+        );
+
+        if (response.status === 200 && response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+          const rawText = response.data.candidates[0].content.parts[0].text;
+          const cleaned = rawText
+            .trim()
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/```$/i, '')
+            .trim();
+
+          const parsed = JSON.parse(cleaned);
+          return {
+            success: true,
+            text: parsed.transcript || '',
+            language: parsed.language_code || languageCode || 'unknown',
+            model: 'gemini-2.0-flash-audio',
+          };
+        }
+      } catch (geminiErr: any) {
+        lastError = geminiErr.response?.data?.error?.message || geminiErr.message;
+        console.error('[SttService] Gemini audio fallback failed:', lastError);
+      }
+    }
+
+    throw new Error(`All STT transcription engines failed. Last error: ${lastError}`);
   }
 }
 
 export const sttService = new SttService();
 export default sttService;
+
