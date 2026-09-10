@@ -46,6 +46,17 @@ export interface UnifiedRecord {
   investigations?: string[];
   procedures?: string[];
   abnormalValues?: string[];
+  vitals?: Array<{ parameter: string; value: string; unit?: string | null }>;
+  advice?: string[];
+  safetyAlerts?: Array<{ severity: string; type: string; message: string }>;
+  brainAnalysis?: {
+    clinicalSummary?: string;
+    riskLevel?: 'low' | 'moderate' | 'high' | 'urgent' | string;
+    redFlags?: string[];
+    suggestedNextSteps?: string[];
+    carePlanHighlights?: string[];
+    rawAnalysis?: any;
+  };
   clinicalNotes?: string;
   storageInfo?: {
     size?: number;
@@ -317,6 +328,10 @@ export const RecordsScreen: React.FC = () => {
             investigations: doc.extractedData?.investigations,
             procedures: doc.extractedData?.procedures,
             abnormalValues: doc.extractedData?.abnormalValues,
+            vitals: doc.extractedData?.vitals,
+            advice: doc.extractedData?.advice,
+            safetyAlerts: doc.safetyAlerts,
+            brainAnalysis: doc.brainAnalysis,
             storageInfo: doc.storage,
           });
         });
@@ -362,6 +377,7 @@ export const RecordsScreen: React.FC = () => {
       }
 
       setRecords(unified);
+      return unified;
     } catch (err: any) {
       console.warn('Failed to fetch records:', err?.message || err);
       setError('Unable to load records. Please verify your connection.');
@@ -475,7 +491,41 @@ export const RecordsScreen: React.FC = () => {
 
       if (uploadResult?.success) {
         setActiveTab('uploaded');
-        await fetchRecords(true);
+        const refreshedList = await fetchRecords(true);
+        const uploadedDoc = uploadResult.data;
+        if (uploadedDoc) {
+          const docId = uploadedDoc._id || uploadedDoc.id;
+          const matching = (refreshedList || []).find((r: UnifiedRecord) => r.id === docId);
+          if (matching) {
+            setSelectedRecord(matching);
+          } else {
+            setSelectedRecord({
+              id: docId || Math.random().toString(),
+              code: uploadedDoc.documentCode || 'DOC-NEW',
+              facilityName: uploadedDoc.source?.hospital || 'Self Uploaded Document',
+              doctorName: uploadedDoc.source?.doctor,
+              documentType: formatDocumentType(uploadedDoc.documentType),
+              rawType: uploadedDoc.documentType,
+              category: 'uploaded',
+              statusBadge: 'Self Uploaded',
+              date: formatRecordDate(uploadedDoc.source?.documentDate || uploadedDoc.createdAt),
+              rawDate: uploadedDoc.source?.documentDate || uploadedDoc.createdAt,
+              verificationStatus: uploadedDoc.verification?.status || 'unverified',
+              extractionStatus: uploadedDoc.extractionStatus || 'completed',
+              diagnoses: uploadedDoc.extractedData?.diagnoses,
+              medications: uploadedDoc.extractedData?.medications,
+              investigations: uploadedDoc.extractedData?.investigations,
+              procedures: uploadedDoc.extractedData?.procedures,
+              abnormalValues: uploadedDoc.extractedData?.abnormalValues,
+              vitals: uploadedDoc.extractedData?.vitals,
+              advice: uploadedDoc.extractedData?.advice,
+              safetyAlerts: uploadedDoc.safetyAlerts,
+              brainAnalysis: uploadedDoc.brainAnalysis,
+              storageInfo: uploadedDoc.storage,
+            });
+          }
+          setDetailModalVisible(true);
+        }
       }
     } catch (err: any) {
       console.warn('Document upload error:', err?.message || err);
@@ -796,6 +846,95 @@ export const RecordsScreen: React.FC = () => {
                   </View>
                 </View>
 
+                {/* 0. Drug Safety Alerts Banner */}
+                {selectedRecord.safetyAlerts && selectedRecord.safetyAlerts.length > 0 ? (
+                  <View style={styles.modalAlertBox}>
+                    <View style={styles.modalAlertHeader}>
+                      <Ionicons name="warning" size={18} color="#B91C1C" />
+                      <Text style={styles.modalAlertTitle}>CLINICAL SAFETY ALERT</Text>
+                    </View>
+                    {selectedRecord.safetyAlerts.map((alert, idx) => (
+                      <Text key={idx} style={styles.modalAlertText}>
+                        • {alert.message}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+
+                {/* 1. Vaidyaarc Brain Model Clinical Intelligence Card */}
+                {selectedRecord.brainAnalysis?.clinicalSummary ? (
+                  <View style={styles.modalBrainBox}>
+                    <View style={styles.modalBrainHeader}>
+                      <View style={styles.modalBrainTitleRow}>
+                        <Ionicons name="sparkles" size={18} color={colors.primary} />
+                        <Text style={styles.modalBrainTitle}>Clinical Brain Intelligence</Text>
+                      </View>
+                      {selectedRecord.brainAnalysis.riskLevel ? (
+                        <Badge
+                          label={`${selectedRecord.brainAnalysis.riskLevel.toUpperCase()} RISK`}
+                          variant={
+                            selectedRecord.brainAnalysis.riskLevel === 'urgent' ||
+                            selectedRecord.brainAnalysis.riskLevel === 'high'
+                              ? 'error'
+                              : selectedRecord.brainAnalysis.riskLevel === 'moderate'
+                              ? 'warning'
+                              : 'success'
+                          }
+                          size="sm"
+                        />
+                      ) : null}
+                    </View>
+
+                    <Text style={styles.modalBrainSummary}>
+                      {selectedRecord.brainAnalysis.clinicalSummary}
+                    </Text>
+
+                    {/* Red Flags if any */}
+                    {selectedRecord.brainAnalysis.redFlags &&
+                    selectedRecord.brainAnalysis.redFlags.length > 0 ? (
+                      <View style={{ marginTop: 6 }}>
+                        <Text style={[styles.modalBrainSubtitle, { color: colors.error }]}>
+                          Key Red Flags:
+                        </Text>
+                        {selectedRecord.brainAnalysis.redFlags.map((flag, idx) => (
+                          <View key={idx} style={styles.modalBrainBullet}>
+                            <Ionicons name="alert-circle" size={14} color={colors.error} style={{ marginTop: 2 }} />
+                            <Text style={styles.modalBrainBulletText}>{flag}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {/* Suggested Next Steps */}
+                    {selectedRecord.brainAnalysis.suggestedNextSteps &&
+                    selectedRecord.brainAnalysis.suggestedNextSteps.length > 0 ? (
+                      <View style={{ marginTop: 6 }}>
+                        <Text style={styles.modalBrainSubtitle}>Suggested Next Steps:</Text>
+                        {selectedRecord.brainAnalysis.suggestedNextSteps.map((step, idx) => (
+                          <View key={idx} style={styles.modalBrainBullet}>
+                            <Ionicons name="checkmark-circle" size={14} color={colors.primary} style={{ marginTop: 2 }} />
+                            <Text style={styles.modalBrainBulletText}>{step}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {/* Care Plan Highlights */}
+                    {selectedRecord.brainAnalysis.carePlanHighlights &&
+                    selectedRecord.brainAnalysis.carePlanHighlights.length > 0 ? (
+                      <View style={{ marginTop: 6 }}>
+                        <Text style={styles.modalBrainSubtitle}>Care Plan Highlights:</Text>
+                        {selectedRecord.brainAnalysis.carePlanHighlights.map((hl, idx) => (
+                          <View key={idx} style={styles.modalBrainBullet}>
+                            <Ionicons name="shield-checkmark" size={14} color={colors.success} style={{ marginTop: 2 }} />
+                            <Text style={styles.modalBrainBulletText}>{hl}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+
                 {/* Clinical Notes if Episode */}
                 {selectedRecord.clinicalNotes ? (
                   <View style={styles.modalSection}>
@@ -823,11 +962,57 @@ export const RecordsScreen: React.FC = () => {
                 {/* Extracted Medications */}
                 {selectedRecord.medications && selectedRecord.medications.length > 0 ? (
                   <View style={styles.modalSection}>
-                    <Text style={styles.modalSectionTitle}>Medications</Text>
+                    <Text style={styles.modalSectionTitle}>Prescribed Medications</Text>
                     <View style={styles.tagList}>
                       {selectedRecord.medications.map((med, index) => (
                         <View key={index} style={styles.modalTag}>
                           <Text style={styles.modalTagText}>{med}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
+                {/* Extracted Vitals */}
+                {selectedRecord.vitals && selectedRecord.vitals.length > 0 ? (
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Extracted Vitals</Text>
+                    <View style={styles.vitalsGrid}>
+                      {selectedRecord.vitals.map((vital, index) => (
+                        <View key={index} style={styles.vitalCard}>
+                          <Text style={styles.vitalParamText}>{vital.parameter}</Text>
+                          <Text style={styles.vitalValueText}>
+                            {vital.value} {vital.unit || ''}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
+                {/* Extracted Investigations / Lab Tests */}
+                {selectedRecord.investigations && selectedRecord.investigations.length > 0 ? (
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Diagnostic Tests & Investigations</Text>
+                    <View style={styles.testsList}>
+                      {selectedRecord.investigations.map((test, index) => (
+                        <View key={index} style={styles.testCard}>
+                          <Text style={styles.testNameText}>{test}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
+                {/* Extracted Advice */}
+                {selectedRecord.advice && selectedRecord.advice.length > 0 ? (
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Clinical Advice & Guidance</Text>
+                    <View style={styles.adviceList}>
+                      {selectedRecord.advice.map((adv, index) => (
+                        <View key={index} style={styles.adviceBullet}>
+                          <Ionicons name="ellipse" size={7} color={colors.primary} style={{ marginTop: 5 }} />
+                          <Text style={styles.adviceText}>{adv}</Text>
                         </View>
                       ))}
                     </View>
@@ -1624,6 +1809,145 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     fontWeight: typography.fontWeight.medium,
   },
+  // Modal Safety Alerts Banner
+  modalAlertBox: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  modalAlertHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  modalAlertTitle: {
+    fontSize: typography.fontSize.xs + 1,
+    fontWeight: typography.fontWeight.bold,
+    color: '#B91C1C',
+  },
+  modalAlertText: {
+    fontSize: typography.fontSize.xs,
+    color: '#7F1D1D',
+    lineHeight: 16,
+  },
+
+  // Modal Brain Intelligence Box
+  modalBrainBox: {
+    backgroundColor: '#F0FAF8',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  modalBrainHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs + 2,
+  },
+  modalBrainTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  modalBrainTitle: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryDark,
+  },
+  modalBrainSummary: {
+    fontSize: typography.fontSize.xs + 1,
+    color: colors.textPrimary,
+    lineHeight: 18,
+    marginBottom: spacing.xs,
+  },
+  modalBrainSubtitle: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    marginTop: spacing.xs + 2,
+    marginBottom: 4,
+  },
+  modalBrainBullet: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginBottom: 3,
+  },
+  modalBrainBulletText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    flex: 1,
+    lineHeight: 16,
+  },
+
+  // Extracted Vitals Grid
+  vitalsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs + 2,
+  },
+  vitalCard: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.md,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minWidth: '45%',
+    flex: 1,
+  },
+  vitalParamText: {
+    fontSize: 10,
+    color: colors.textMuted,
+    fontWeight: typography.fontWeight.bold,
+    textTransform: 'uppercase',
+  },
+  vitalValueText: {
+    fontSize: typography.fontSize.xs + 1,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    marginTop: 2,
+  },
+
+  // Extracted Tests List
+  testsList: {
+    gap: spacing.xs,
+  },
+  testCard: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  testNameText: {
+    fontSize: typography.fontSize.xs + 1,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+
+  // Extracted Advice
+  adviceList: {
+    gap: 4,
+  },
+  adviceBullet: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  adviceText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    lineHeight: 16,
+    flex: 1,
+  },
+
   modalDoneBtn: {
     marginTop: spacing.md,
   },

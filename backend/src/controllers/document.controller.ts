@@ -260,24 +260,24 @@ export const uploadDocument = async (req: Request, res: Response) => {
       await document.save();
     }
 
-    // 3. Forward to Stage-2 Brain Model (LLaMA / Qwen) — fire-and-forget
+    // 3. Forward to Stage-2 Brain Model for clinical synthesis & summary
     if (visionResult?.extracted_data) {
-      brainModelAgent.analyze({
-        documentId: document._id.toString(),
-        documentCode: document.documentCode,
-        patientId: patientId.toString(),
-        extracted_data: visionResult.extracted_data,
-        safety_alerts: visionResult.safety_alerts || [],
-        fhir_bundle: visionResult.fhir_bundle,
-      }).then(async (analysis) => {
+      try {
+        const analysis = await brainModelAgent.analyze({
+          documentId: document._id.toString(),
+          documentCode: document.documentCode,
+          patientId: patientId.toString(),
+          extracted_data: visionResult.extracted_data,
+          safety_alerts: visionResult.safety_alerts || [],
+          fhir_bundle: visionResult.fhir_bundle,
+        });
         if (analysis) {
-          await MedicalDocument.findByIdAndUpdate(document._id, {
-            $set: { brainAnalysis: analysis },
-          });
+          document.brainAnalysis = analysis;
+          await document.save();
         }
-      }).catch((brainErr) => {
+      } catch (brainErr: any) {
         console.warn('[uploadDocument] Brain Model warning (non-fatal):', brainErr.message);
-      });
+      }
     }
 
     // 4. Clean up temporary uploaded file from local staging
