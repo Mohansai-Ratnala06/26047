@@ -31,6 +31,8 @@ export interface TurnResponseData {
   informationComplete: boolean;
   missingInformation: string[];
   clinicalOutput?: Record<string, any> | null;
+  audioBase64?: string;
+  audioMimeType?: string;
 }
 
 export interface ConversationDoc {

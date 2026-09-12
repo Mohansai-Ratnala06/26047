@@ -17,6 +17,8 @@ export async function checkBackendHealth(): Promise<HealthStatus | null> {
 
 export { sttApi } from './sttApi';
 export * from './sttApi';
+export { ttsApi } from './ttsApi';
+export * from './ttsApi';
 export { conversationApi } from './conversationApi';
 export * from './conversationApi';
 export { documentApi } from './documentApi';

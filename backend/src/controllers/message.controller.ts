@@ -6,6 +6,7 @@ import { ApiResponse } from '../types';
 import clinicalBrainService, { NormalizedClinicalInputDTO } from '../services/clinicalBrain.service';
 import { resolvePatientId } from '../middleware/patientResolver';
 import { nmtService } from '../services/stt.service';
+import { ttsService } from '../services/tts.service';
 
 
 export const sendMessage = async (req: Request, res: Response) => {
@@ -141,6 +142,22 @@ export const sendMessage = async (req: Request, res: Response) => {
       nativeAssistantContent = rawBrainMessage;
     }
 
+    // 5.1 MULTILINGUAL TTS SYNTHESIS (Assistant Spoken Voice):
+    let audioBase64: string | undefined = undefined;
+    let audioMimeType: string | undefined = undefined;
+    if (inputType === 'voice' || req.body.generateAudio === true) {
+      try {
+        const ttsResult = await ttsService.synthesize(nativeAssistantContent, patientLanguage);
+        if (ttsResult && ttsResult.audioBase64) {
+          audioBase64 = ttsResult.audioBase64;
+          audioMimeType = ttsResult.mimeType || 'audio/wav';
+          console.info(`[TTS Synthesis] Generated ${audioMimeType} audio (${ttsResult.languageCode}) for: "${nativeAssistantContent.substring(0, 40)}..."`);
+        }
+      } catch (ttsErr: any) {
+        console.warn('[TTS Synthesis] Warning: Audio synthesis error, continuing with text-only:', ttsErr.message);
+      }
+    }
+
     // 6. Save assistant response message in MongoDB
     const assistantMessage = new Message({
       conversationId,
@@ -176,7 +193,7 @@ export const sendMessage = async (req: Request, res: Response) => {
     }
     await conversation.save();
 
-    // 8. Return response to mobile client with translated content, english original, and metadata
+    // 8. Return response to mobile client with translated content, english original, metadata, and speech audio
     const response: ApiResponse = {
       success: true,
       data: {
@@ -188,6 +205,8 @@ export const sendMessage = async (req: Request, res: Response) => {
         informationComplete: turnResponse.information_complete,
         missingInformation: turnResponse.missing_information,
         clinicalOutput: turnResponse.clinical_output || null,
+        audioBase64,
+        audioMimeType,
       },
     };
     res.status(201).json(response);

@@ -9,15 +9,19 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import {
   useAudioRecorder,
+  useAudioPlayer,
+  useAudioPlayerStatus,
   RecordingPresets,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
 } from 'expo-audio';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ScreenContainer, Header, GlassCard, Badge, Card, Button } from '../../components';
 import { colors, spacing, typography, borderRadius, shadows } from '../../theme';
 import { sttApi } from '../../api/sttApi';
+import { ttsApi } from '../../api/ttsApi';
 import { conversationApi, TurnResponseData } from '../../api/conversationApi';
 import { episodeApi } from '../../api/episodeApi';
 import { RootStackParamList } from '../../navigation/types';
@@ -39,6 +43,75 @@ export const VoiceAgentScreen: React.FC = () => {
 
   // Native audio recorder hook from expo-audio (SDK 57)
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  // Native audio player hook from expo-audio (SDK 57) for TTS playback
+  const audioPlayer = useAudioPlayer(null);
+  const audioStatus = useAudioPlayerStatus(audioPlayer);
+  const [lastAudioBase64, setLastAudioBase64] = useState<string | null>(null);
+  const [isSynthesizingTts, setIsSynthesizingTts] = useState(false);
+
+  // Play assistant spoken speech audio from Base64 via expo-audio
+  const playSpokenAudio = async (base64Audio: string) => {
+    try {
+      setLastAudioBase64(base64Audio);
+      const audioUri = `${FileSystem.cacheDirectory}vaidya_assistant_tts.wav`;
+      await FileSystem.writeAsStringAsync(audioUri, base64Audio, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      });
+
+      audioPlayer.replace(audioUri);
+      audioPlayer.play();
+    } catch (playErr: any) {
+      console.warn('[VoiceAgentScreen] Audio playback warning:', playErr?.message || playErr);
+    }
+  };
+
+  // Replay or on-demand synthesize audio for the latest assistant message
+  const handleReplaySpokenAudio = async () => {
+    if (audioStatus.playing) {
+      audioPlayer.pause();
+      return;
+    }
+
+    if (lastAudioBase64) {
+      await playSpokenAudio(lastAudioBase64);
+    } else if (brainResponse?.assistantMessage?.content) {
+      try {
+        setIsSynthesizingTts(true);
+        setSttStatus('Synthesizing speech via Sarvam Bulbul v3...');
+        const ttsRes = await ttsApi.synthesizeSpeech(
+          brainResponse.assistantMessage.content,
+          detectedLanguage
+        );
+        if (ttsRes.success && ttsRes.data?.audioBase64) {
+          await playSpokenAudio(ttsRes.data.audioBase64);
+        }
+      } catch (ttsErr: any) {
+        console.warn('[VoiceAgentScreen] Manual TTS replay failed:', ttsErr?.message || ttsErr);
+      } finally {
+        setIsSynthesizingTts(false);
+        setSttStatus(null);
+      }
+    }
+  };
+
+  // User-controlled session reset: starts a 100% clean intake
+  const handleStartNewConsultation = () => {
+    if (audioStatus.playing) {
+      audioPlayer.pause();
+    }
+    setConversationId(null);
+    setBrainResponse(null);
+    setTranscript('');
+    setLastAudioBase64(null);
+    setErrorMessage(null);
+    setSttStatus('New consultation ready. Press the microphone to describe symptoms.');
+  };
 
   // Helper to obtain an open episode or create a new triage intake episode
   const getOrCreateActiveEpisode = async (): Promise<string> => {
@@ -83,11 +156,17 @@ export const VoiceAgentScreen: React.FC = () => {
     initConversation();
     return () => {
       isMounted = false;
+      if (audioStatus.playing) {
+        audioPlayer.pause();
+      }
     };
   }, []);
 
   // Start recording audio
   const startRecording = async () => {
+    if (audioStatus.playing) {
+      audioPlayer.pause();
+    }
     setErrorMessage(null);
     setTranscript('');
     setBrainResponse(null);
@@ -207,6 +286,11 @@ export const VoiceAgentScreen: React.FC = () => {
       setBrainResponse(messageRes.data);
       setIsProcessingBrain(false);
       setSttStatus(null);
+
+      // Auto-play spoken assistant response if audio was synthesized
+      if (messageRes.data.audioBase64) {
+        await playSpokenAudio(messageRes.data.audioBase64);
+      }
     } catch (brainErr: any) {
       console.error('Brain dispatch error:', brainErr);
       setIsProcessingBrain(false);
@@ -231,6 +315,15 @@ export const VoiceAgentScreen: React.FC = () => {
       <Header
         title="VaidyaAI Voice Agent"
         subtitle="AI Clinical Intelligence & Triage Assistant"
+        rightAction={
+          <TouchableOpacity
+            onPress={handleStartNewConsultation}
+            style={styles.headerResetBtn}
+            accessibilityLabel="Start New Medical Consultation"
+          >
+            <Ionicons name="refresh-circle-outline" size={26} color={colors.primary} />
+          </TouchableOpacity>
+        }
       />
 
       {/* Center Voice Orb Stage */}
@@ -242,12 +335,21 @@ export const VoiceAgentScreen: React.FC = () => {
             styles.voiceOrb,
             isListening ? styles.voiceOrbListening : null,
             isEmergency ? styles.voiceOrbEmergency : null,
+            audioStatus.playing ? styles.voiceOrbSpeaking : null,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={isListening ? 'Stop listening' : 'Start speaking with VaidyaAI'}
+          accessibilityLabel={
+            audioStatus.playing
+              ? 'VaidyaAI is speaking'
+              : isListening
+              ? 'Stop listening'
+              : 'Start speaking with VaidyaAI'
+          }
         >
-          {isTranscribing || isProcessingBrain ? (
+          {isTranscribing || isProcessingBrain || isSynthesizingTts ? (
             <ActivityIndicator size="large" color="#FFFFFF" />
+          ) : audioStatus.playing ? (
+            <Ionicons name="volume-high" size={44} color="#FFFFFF" />
           ) : (
             <Ionicons
               name={isListening ? 'stop' : 'mic'}
@@ -260,8 +362,12 @@ export const VoiceAgentScreen: React.FC = () => {
         {/* Status Badge */}
         <Badge
           label={
-            isProcessingBrain
+            audioStatus.playing
+              ? `Speaking (${detectedLanguage})...`
+              : isProcessingBrain
               ? 'Evaluating Clinical Brain...'
+              : isSynthesizingTts
+              ? 'Synthesizing Voice (Bulbul v3)...'
               : isTranscribing
               ? 'Transcribing (Saaras v3)...'
               : isListening
@@ -275,7 +381,9 @@ export const VoiceAgentScreen: React.FC = () => {
           variant={
             isEmergency
               ? 'error'
-              : isListening || isTranscribing || isProcessingBrain
+              : audioStatus.playing
+              ? 'success'
+              : isListening || isTranscribing || isProcessingBrain || isSynthesizingTts
               ? 'warning'
               : transcript
               ? 'success'
@@ -285,9 +393,11 @@ export const VoiceAgentScreen: React.FC = () => {
         />
 
         <Text style={styles.voicePrompt}>
-          {isListening
+          {audioStatus.playing
+            ? 'VaidyaAI is speaking... Tap the microphone anytime to reply.'
+            : isListening
             ? 'Speak your symptoms clearly in Telugu, Hindi, or English...'
-            : isTranscribing || isProcessingBrain
+            : isTranscribing || isProcessingBrain || isSynthesizingTts
             ? sttStatus
             : 'Press the microphone to describe symptoms, medications, or health queries.'}
         </Text>
@@ -346,17 +456,30 @@ export const VoiceAgentScreen: React.FC = () => {
               <Ionicons name="medkit" size={18} color={colors.primaryDark} />
               <Text style={styles.brainHeaderLabel}>VaidyaArc Clinical Brain</Text>
             </View>
-            <Badge
-              label={
-                brainResponse.turnStatus === 'emergency'
-                  ? 'Emergency'
-                  : brainResponse.informationComplete
-                  ? 'Triage Complete'
-                  : 'In Progress'
-              }
-              variant={brainResponse.turnStatus === 'emergency' ? 'error' : 'mint'}
-              size="sm"
-            />
+            <View style={styles.headerControlsRow}>
+              <TouchableOpacity
+                onPress={handleReplaySpokenAudio}
+                style={styles.speakerBtn}
+                accessibilityLabel={audioStatus.playing ? 'Pause voice' : 'Play voice'}
+              >
+                <Ionicons
+                  name={audioStatus.playing ? 'volume-high' : 'volume-medium-outline'}
+                  size={20}
+                  color={colors.primaryDark}
+                />
+              </TouchableOpacity>
+              <Badge
+                label={
+                  brainResponse.turnStatus === 'emergency'
+                    ? 'Emergency'
+                    : brainResponse.informationComplete
+                    ? 'Triage Complete'
+                    : 'In Progress'
+                }
+                variant={brainResponse.turnStatus === 'emergency' ? 'error' : 'mint'}
+                size="sm"
+              />
+            </View>
           </View>
 
           <Text style={styles.brainMessageText}>
@@ -422,17 +545,25 @@ export const VoiceAgentScreen: React.FC = () => {
           <Text style={styles.completedCardDesc}>
             Your structured clinical intake and risk convergence evaluation is complete. View your narrative summary, risk scores, care pathway, and questions prepared for your doctor.
           </Text>
-          <Button
-            title="Open Clinical Assessment Report"
-            variant="secondary"
-            onPress={() =>
-              navigation.navigate('ClinicalResults', {
-                clinicalOutput: brainResponse.clinicalOutput!,
-                conversationId: conversationId || undefined,
-              })
-            }
-            style={styles.viewResultsBtn}
-          />
+          <View style={styles.completedActionsRow}>
+            <Button
+              title="Open Clinical Assessment Report"
+              variant="secondary"
+              onPress={() =>
+                navigation.navigate('ClinicalResults', {
+                  clinicalOutput: brainResponse.clinicalOutput!,
+                  conversationId: conversationId || undefined,
+                })
+              }
+              style={styles.viewResultsBtn}
+            />
+            <Button
+              title="Start New Consultation"
+              variant="outline"
+              onPress={handleStartNewConsultation}
+              style={styles.newConsultationBtn}
+            />
+          </View>
         </Card>
       ) : null}
 
@@ -479,6 +610,11 @@ const styles = StyleSheet.create({
   voiceOrbEmergency: {
     backgroundColor: colors.error,
     borderColor: colors.errorLight,
+  },
+  voiceOrbSpeaking: {
+    backgroundColor: colors.primaryDark,
+    borderColor: colors.mintAccent,
+    ...shadows.elevated,
   },
   statusBadge: {
     marginTop: spacing.md,
@@ -658,5 +794,25 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontStyle: 'italic',
     flex: 1,
+  },
+  headerResetBtn: {
+    padding: spacing.xs,
+  },
+  headerControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  speakerBtn: {
+    padding: 6,
+    borderRadius: borderRadius.full,
+    backgroundColor: 'rgba(10, 77, 82, 0.1)',
+  },
+  completedActionsRow: {
+    marginTop: spacing.xs,
+    gap: spacing.xs,
+  },
+  newConsultationBtn: {
+    marginTop: 4,
   },
 });

@@ -11,6 +11,7 @@ import documentRoutes from '../document.routes';
 import assessmentRoutes from '../assessment.routes';
 import doctorRoutes from '../doctor.routes';
 import sttRoutes from '../stt.routes';
+import ttsRoutes from '../tts.routes';
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.use('/documents', documentRoutes);
 router.use('/assessments', assessmentRoutes);
 router.use('/doctor', doctorRoutes);
 router.use('/stt', sttRoutes);
+router.use('/tts', ttsRoutes);
 
 export default router;
