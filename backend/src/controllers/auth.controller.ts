@@ -6,6 +6,7 @@ import Patient from '../models/Patient';
 import HealthProfile from '../models/HealthProfile';
 import { generateCode } from '../utils/codeGenerator';
 import { ApiResponse } from '../types';
+import { resolveOrCreatePatient } from '../middleware/patientResolver';
 
 const getJwtSecret = () => process.env.JWT_SECRET || 'dev-secret';
 
@@ -140,7 +141,10 @@ export const login = async (req: Request, res: Response) => {
     const token = jwt.sign({ id: user._id, role: user.role }, getJwtSecret(), { expiresIn: '7d' });
 
     // Include patient info in login response
-    const patient = await Patient.findOne({ userId: user._id }).select('_id patientCode status');
+    let patient = await Patient.findOne({ userId: user._id }).select('_id patientCode status');
+    if (!patient && user.role === 'patient') {
+      patient = await resolveOrCreatePatient(user._id.toString());
+    }
 
     const response: ApiResponse = {
       success: true,
@@ -166,7 +170,10 @@ export const me = async (req: Request, res: Response) => {
       return res.status(404).json(response);
     }
 
-    const patient = await Patient.findOne({ userId: user._id });
+    let patient = await Patient.findOne({ userId: user._id });
+    if (!patient && user.role === 'patient') {
+      patient = await resolveOrCreatePatient(user._id.toString());
+    }
 
     const response: ApiResponse = { success: true, data: { user, patient } };
     res.status(200).json(response);

@@ -3,11 +3,12 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import MedicalDocument from '../models/MedicalDocument';
-import Patient from '../models/Patient';
 import { generateCode } from '../utils/codeGenerator';
 import { ApiResponse } from '../types';
 import { visionExtractorAgent } from '../agents/VisionExtractorAgent';
 import { brainModelAgent } from '../agents/BrainModelAgent';
+import { resolvePatientId } from '../middleware/patientResolver';
+
 
 // Upload staging directory
 const uploadDir = path.join(process.cwd(), 'tmp', 'uploads');
@@ -39,10 +40,6 @@ export const multerUpload = multer({
   },
 });
 
-const resolvePatientId = async (userId: string) => {
-  const patient = await Patient.findOne({ userId }).select('_id');
-  return patient?._id;
-};
 
 export const createDocument = async (req: Request, res: Response) => {
   try {

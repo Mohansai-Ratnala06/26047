@@ -1,13 +1,9 @@
 import { Request, Response } from 'express';
 import Consent from '../models/Consent';
-import Patient from '../models/Patient';
 import { generateCode } from '../utils/codeGenerator';
 import { ApiResponse } from '../types';
+import { resolvePatientId } from '../middleware/patientResolver';
 
-const resolvePatientId = async (userId: string) => {
-  const patient = await Patient.findOne({ userId }).select('_id');
-  return patient?._id;
-};
 
 export const createConsent = async (req: Request, res: Response) => {
   try {

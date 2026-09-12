@@ -4,11 +4,8 @@ import Conversation from '../models/Conversation';
 import Patient from '../models/Patient';
 import { ApiResponse } from '../types';
 import clinicalBrainService, { NormalizedClinicalInputDTO } from '../services/clinicalBrain.service';
+import { resolvePatientId } from '../middleware/patientResolver';
 
-const resolvePatientId = async (userId: string) => {
-  const patient = await Patient.findOne({ userId }).select('_id');
-  return patient?._id;
-};
 
 export const sendMessage = async (req: Request, res: Response) => {
   try {

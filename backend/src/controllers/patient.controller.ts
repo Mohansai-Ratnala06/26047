@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Patient from '../models/Patient';
 import { generateCode } from '../utils/codeGenerator';
 import { ApiResponse } from '../types';
+import { resolveOrCreatePatient } from '../middleware/patientResolver';
 
 export const createPatient = async (req: Request, res: Response) => {
   try {
@@ -37,7 +38,14 @@ export const createPatient = async (req: Request, res: Response) => {
 export const getMe = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const patient = await Patient.findOne({ userId }).populate('userId', '-passwordHash');
+    let patient = await Patient.findOne({ userId }).populate('userId', '-passwordHash');
+
+    if (!patient) {
+      patient = await resolveOrCreatePatient(userId);
+      if (patient) {
+        await patient.populate('userId', '-passwordHash');
+      }
+    }
 
     if (!patient) {
       const response: ApiResponse = { success: false, message: 'Patient profile not found' };
@@ -56,6 +64,9 @@ export const updateMe = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const { demographics, contact, preferences, identifiers } = req.body;
+
+    // Ensure patient document exists
+    await resolveOrCreatePatient(userId);
 
     const updateData: Record<string, any> = {};
     if (demographics) {

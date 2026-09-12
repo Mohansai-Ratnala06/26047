@@ -1,13 +1,9 @@
 import { Request, Response } from 'express';
 import Conversation from '../models/Conversation';
 import Episode from '../models/Episode';
-import Patient from '../models/Patient';
 import { ApiResponse } from '../types';
+import { resolvePatientId } from '../middleware/patientResolver';
 
-const resolvePatientId = async (userId: string) => {
-  const patient = await Patient.findOne({ userId }).select('_id');
-  return patient?._id;
-};
 
 export const createConversation = async (req: Request, res: Response) => {
   try {
