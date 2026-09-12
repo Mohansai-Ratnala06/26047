@@ -168,7 +168,12 @@ export const VoiceAgentScreen: React.FC = () => {
   // Dispatch recognized transcript to Node message endpoint (which calls ClinicalBrainService)
   const sendTranscriptToBrain = async (text: string, language: string) => {
     setIsProcessingBrain(true);
-    setSttStatus('Consulting VaidyaArc Clinical Intelligence Brain...');
+    const isRegional = language && !language.toLowerCase().startsWith('en');
+    setSttStatus(
+      isRegional
+        ? `NMT translating from ${language} & consulting Clinical Brain...`
+        : 'Consulting VaidyaArc Clinical Intelligence Brain...'
+    );
 
     try {
       // Ensure conversation exists
@@ -188,7 +193,7 @@ export const VoiceAgentScreen: React.FC = () => {
         }
       }
 
-      // Invoke message endpoint (invokes ClinicalBrainService and Python Brain)
+      // Invoke message endpoint (runs Inbound NMT -> Clinical Brain -> Outbound NMT)
       const messageRes = await conversationApi.sendMessage(activeConvId, {
         content: text,
         inputType: 'voice',
@@ -322,6 +327,14 @@ export const VoiceAgentScreen: React.FC = () => {
             <Badge label={detectedLanguage} variant="neutral" size="sm" />
           </View>
           <Text style={styles.transcriptText}>"{transcript}"</Text>
+          {brainResponse?.patientMessage?.structuredData?.englishTranslation ? (
+            <View style={styles.translationSubRow}>
+              <Ionicons name="language-outline" size={14} color={colors.primary} />
+              <Text style={styles.translationSubText}>
+                Clinical English: "{brainResponse.patientMessage.structuredData.englishTranslation}"
+              </Text>
+            </View>
+          ) : null}
         </Card>
       ) : null}
 
@@ -349,6 +362,16 @@ export const VoiceAgentScreen: React.FC = () => {
           <Text style={styles.brainMessageText}>
             {brainResponse.assistantMessage.content}
           </Text>
+
+          {brainResponse.englishAssistantMessage &&
+          brainResponse.englishAssistantMessage !== brainResponse.assistantMessage.content ? (
+            <View style={styles.translationSubRow}>
+              <Ionicons name="globe-outline" size={14} color={colors.primaryDark} />
+              <Text style={styles.translationSubText}>
+                Clinical English: "{brainResponse.englishAssistantMessage}"
+              </Text>
+            </View>
+          ) : null}
 
           {/* Missing Clinical Information prompts */}
           {brainResponse.missingInformation && brainResponse.missingInformation.length > 0 ? (
@@ -418,9 +441,9 @@ export const VoiceAgentScreen: React.FC = () => {
         <View style={styles.noticeRow}>
           <Ionicons name="sparkles-outline" size={18} color={colors.primary} />
           <View style={styles.noticeTextCol}>
-            <Text style={styles.noticeTitle}>Sarvam Saaras v3 + VaidyaArc Python Brain</Text>
+            <Text style={styles.noticeTitle}>Sarvam Saaras v3 + In-Process NMT + VaidyaArc Brain</Text>
             <Text style={styles.noticeDesc}>
-              Speech transcribed via Saaras v3 and evaluated in real-time by the multi-phase clinical reasoning engine.
+              Speech transcribed via Saaras v3, translated to clinical English for AI reasoning, and translated back to your native language.
             </Text>
           </View>
         </View>
@@ -620,5 +643,20 @@ const styles = StyleSheet.create({
   },
   viewResultsBtn: {
     marginTop: spacing.xs,
+  },
+  translationSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(10, 77, 82, 0.08)',
+  },
+  translationSubText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    flex: 1,
   },
 });

@@ -147,7 +147,7 @@ Respond ONLY with a valid JSON object matching this schema:
         };
 
         const response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
           payload,
           {
             headers: { 'Content-Type': 'application/json' },
@@ -183,5 +183,155 @@ Respond ONLY with a valid JSON object matching this schema:
 }
 
 export const sttService = new SttService();
+
+export interface NmtTranslationResult {
+  originalText: string;
+  translatedText: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+}
+
+export class NmtService {
+  private geminiApiKey: string | undefined;
+  private baseUrl: string;
+
+  constructor() {
+    this.geminiApiKey = process.env.GEMINI_API_KEY;
+    this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
+  }
+
+  /**
+   * Translates input text from any Indian or foreign language into English
+   * using Google Gemini in-process with low temperature and strict instructions.
+   */
+  async translateToEnglish(text: string, sourceLang?: string): Promise<string> {
+    if (!text || !text.trim()) {
+      return '';
+    }
+    const cleanText = text.trim();
+    if (sourceLang && (sourceLang.toLowerCase().startsWith('en') || sourceLang.toLowerCase() === 'english')) {
+      return cleanText;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || this.geminiApiKey;
+    if (!apiKey) {
+      console.warn('[NmtService] GEMINI_API_KEY not configured, passing through original text.');
+      return cleanText;
+    }
+
+    const systemInstruction =
+      "You are a highly capable translation engine. Your task is to accurately translate the user's text into English. " +
+      "If the text is already in English, output the exact same text. " +
+      "Return ONLY the translated English text. Do NOT include any conversational filler, explanations, markdown, or quotation marks.";
+
+    const models = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+    for (const model of models) {
+      try {
+        const payload = {
+          contents: [{ parts: [{ text: cleanText }] }],
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          generationConfig: {
+            temperature: 0.1,
+          },
+        };
+
+        const response = await axios.post(`${this.baseUrl}/${model}:generateContent?key=${apiKey}`, payload, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 25000,
+        });
+
+        if (response.status === 200 && response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+          const translated = response.data.candidates[0].content.parts[0].text.trim();
+          return translated.replace(/^["']|["']$/g, '').trim();
+        }
+      } catch (err: any) {
+        console.warn(`[NmtService] translateToEnglish failed with ${model}:`, err.response?.data?.error?.message || err.message);
+      }
+    }
+
+    return cleanText;
+  }
+
+  /**
+   * Translates clinical guidance from English into the patient's spoken language (e.g. Telugu, Hindi, Tamil).
+   * Maintains polite, empathetic clinical tone suitable for patient healthcare triage.
+   */
+  async translateFromEnglish(text: string, targetLang: string): Promise<string> {
+    if (!text || !text.trim()) {
+      return '';
+    }
+    const cleanText = text.trim();
+    if (!targetLang || targetLang.toLowerCase().startsWith('en') || targetLang.toLowerCase() === 'english') {
+      return cleanText;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || this.geminiApiKey;
+    if (!apiKey) {
+      console.warn('[NmtService] GEMINI_API_KEY not configured, passing through original text.');
+      return cleanText;
+    }
+
+    const langMap: Record<string, string> = {
+      te: 'Telugu',
+      'te-in': 'Telugu',
+      hi: 'Hindi',
+      'hi-in': 'Hindi',
+      ta: 'Tamil',
+      'ta-in': 'Tamil',
+      kn: 'Kannada',
+      'kn-in': 'Kannada',
+      mr: 'Marathi',
+      'mr-in': 'Marathi',
+      bn: 'Bengali',
+      'bn-in': 'Bengali',
+      gu: 'Gujarati',
+      'gu-in': 'Gujarati',
+      ml: 'Malayalam',
+      'ml-in': 'Malayalam',
+      pa: 'Punjabi',
+      'pa-in': 'Punjabi',
+      or: 'Odia',
+      'or-in': 'Odia',
+    };
+
+    const readableTarget = langMap[targetLang.toLowerCase()] || targetLang;
+
+    const systemInstruction =
+      `You are an expert medical translation engine. Your task is to accurately translate clinical guidance and questions from English into ${readableTarget}. ` +
+      `Maintain a polite, empathetic, and culturally appropriate tone suited for a doctor-patient conversation. ` +
+      `Preserve any essential clinical terms, medication names, or measurements clearly. ` +
+      `Return ONLY the translated ${readableTarget} text. Do NOT include any conversational filler, explanations, markdown, or quotation marks.`;
+
+    const models = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+    for (const model of models) {
+      try {
+        const payload = {
+          contents: [{ parts: [{ text: cleanText }] }],
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          generationConfig: {
+            temperature: 0.1,
+          },
+        };
+
+        const response = await axios.post(`${this.baseUrl}/${model}:generateContent?key=${apiKey}`, payload, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 25000,
+        });
+
+        if (response.status === 200 && response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+          const translated = response.data.candidates[0].content.parts[0].text.trim();
+          return translated.replace(/^["']|["']$/g, '').trim();
+        }
+      } catch (err: any) {
+        console.warn(`[NmtService] translateFromEnglish failed with ${model}:`, err.response?.data?.error?.message || err.message);
+      }
+    }
+
+    return cleanText;
+  }
+}
+
+export const nmtService = new NmtService();
 export default sttService;
+
 

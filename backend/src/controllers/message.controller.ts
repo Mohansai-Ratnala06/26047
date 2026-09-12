@@ -5,6 +5,7 @@ import Patient from '../models/Patient';
 import { ApiResponse } from '../types';
 import clinicalBrainService, { NormalizedClinicalInputDTO } from '../services/clinicalBrain.service';
 import { resolvePatientId } from '../middleware/patientResolver';
+import { nmtService } from '../services/stt.service';
 
 
 export const sendMessage = async (req: Request, res: Response) => {
@@ -36,33 +37,54 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(404).json(response);
     }
 
-    // 1. Save patient message exactly as received
+    // Determine patient's spoken/selected language
+    const patientLanguage = language || conversation.language || 'en';
+
+    // 1. INBOUND NMT TRANSLATION (STT -> Brain):
+    // Translate regional language text (Telugu, Hindi, Tamil, etc.) to clinical English for the Brain
+    let englishContent = content || '';
+    if (content && patientLanguage && !patientLanguage.toLowerCase().startsWith('en')) {
+      try {
+        englishContent = await nmtService.translateToEnglish(content, patientLanguage);
+        console.info(`[NMT Inbound] Translated "${content}" (${patientLanguage}) -> "${englishContent}" (en)`);
+      } catch (nmtInErr: any) {
+        console.warn('[NMT Inbound] Translation failed, proceeding with original text:', nmtInErr.message);
+        englishContent = content;
+      }
+    }
+
+    // 2. Save patient message in MongoDB with original text and English translation metadata
+    const safePatientContent = (content && content.trim()) ? content.trim() : (englishContent || 'Patient message');
     const patientMessage = new Message({
       conversationId,
       patientId,
       episodeId: conversation.episodeId,
       role: 'patient',
       inputType: inputType || 'text',
-      language: language || conversation.language || 'en',
-      content: content || '',
-      structuredData,
+      language: patientLanguage,
+      content: safePatientContent,
+      structuredData: {
+        ...(structuredData || {}),
+        englishTranslation: englishContent !== content ? englishContent : undefined,
+      },
       audioS3Key,
       timestamp: new Date(),
     });
     await patientMessage.save();
 
-    // 2. Construct NormalizedClinicalInputDTO for Python Brain
+    // 3. Construct NormalizedClinicalInputDTO for Clinical Brain
     const patientDoc = await Patient.findById(patientId);
     const clinicalInput: NormalizedClinicalInputDTO = {
       patient_id: patientId.toString(),
       episode_id: conversation.episodeId ? conversation.episodeId.toString() : conversationId,
       channel: conversation.channel || 'mobile_app',
       message: {
-        original_text: content || '',
-        original_language: language || conversation.language || 'en',
+        original_text: safePatientContent,
+        original_language: patientLanguage,
+        english_text: englishContent,
         source: 'patient',
         confidence: 1.0,
-        provenance: 'patient_typed',
+        provenance: inputType === 'voice' ? 'patient_spoken' : 'patient_typed',
       },
       patient_profile: {
         age: patientDoc?.demographics?.age,
@@ -76,7 +98,7 @@ export const sendMessage = async (req: Request, res: Response) => {
       state_snapshot: conversation.stateSnapshot || null,
     };
 
-    // 3. Invoke Python Clinical Brain
+    // 4. Invoke Clinical Brain (processes clinical reasoning in English)
     let turnResponse;
     try {
       turnResponse = await clinicalBrainService.processClinicalTurn(clinicalInput);
@@ -90,16 +112,46 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(503).json(response);
     }
 
-    // 4. Save assistant response message in MongoDB
+    // 5. OUTBOUND NMT TRANSLATION (Brain -> Patient's Language / future TTS):
+    // Fallback default message in case turnResponse.conversation_message is null or empty
+    const defaultClinicalMessage = turnResponse.immediate_attention_required || turnResponse.status === 'emergency'
+      ? 'EMERGENCY WARNING: Your reported symptoms indicate a potential medical emergency requiring immediate clinical attention. Please seek emergency medical care immediately.'
+      : turnResponse.information_complete || turnResponse.status === 'complete'
+      ? 'Thank you. Your clinical intake and assessment are complete. Please review your clinical assessment summary.'
+      : 'Could you please describe your symptoms or how long you have been experiencing this in more detail?';
+
+    const rawBrainMessage = (turnResponse.conversation_message && turnResponse.conversation_message.trim())
+      ? turnResponse.conversation_message.trim()
+      : defaultClinicalMessage;
+
+    // Translate Brain's clinical English response back into the patient's native language
+    let nativeAssistantContent = rawBrainMessage;
+    if (rawBrainMessage && patientLanguage && !patientLanguage.toLowerCase().startsWith('en')) {
+      try {
+        nativeAssistantContent = await nmtService.translateFromEnglish(rawBrainMessage, patientLanguage);
+        console.info(`[NMT Outbound] Translated Brain response (en) -> (${patientLanguage}): "${nativeAssistantContent}"`);
+      } catch (nmtOutErr: any) {
+        console.warn('[NMT Outbound] Translation failed, proceeding with English response:', nmtOutErr.message);
+        nativeAssistantContent = rawBrainMessage;
+      }
+    }
+
+    // Safety guard: ensure content is never empty or whitespace
+    if (!nativeAssistantContent || !nativeAssistantContent.trim()) {
+      nativeAssistantContent = rawBrainMessage;
+    }
+
+    // 6. Save assistant response message in MongoDB
     const assistantMessage = new Message({
       conversationId,
       patientId,
       episodeId: conversation.episodeId,
       role: 'assistant',
       inputType: 'text',
-      language: language || conversation.language || 'en',
-      content: turnResponse.conversation_message || '',
+      language: patientLanguage,
+      content: nativeAssistantContent,
       structuredData: {
+        englishMessage: rawBrainMessage,
         status: turnResponse.status,
         information_complete: turnResponse.information_complete,
         missing_information: turnResponse.missing_information,
@@ -111,7 +163,7 @@ export const sendMessage = async (req: Request, res: Response) => {
     });
     await assistantMessage.save();
 
-    // 5. Update Conversation with stateSnapshot and clinical status
+    // 7. Update Conversation with stateSnapshot and clinical status
     conversation.stateSnapshot = turnResponse.updated_state;
     conversation.clinicalStatus = turnResponse.status;
     conversation.immediateAttentionRequired = turnResponse.immediate_attention_required;
@@ -124,12 +176,13 @@ export const sendMessage = async (req: Request, res: Response) => {
     }
     await conversation.save();
 
-    // 6. Return response to mobile client
+    // 8. Return response to mobile client with translated content, english original, and metadata
     const response: ApiResponse = {
       success: true,
       data: {
         patientMessage,
         assistantMessage,
+        englishAssistantMessage: rawBrainMessage,
         turnStatus: turnResponse.status,
         immediateAttentionRequired: turnResponse.immediate_attention_required,
         informationComplete: turnResponse.information_complete,

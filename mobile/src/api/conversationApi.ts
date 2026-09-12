@@ -25,6 +25,7 @@ export interface ConversationMessage {
 export interface TurnResponseData {
   patientMessage: ConversationMessage;
   assistantMessage: ConversationMessage;
+  englishAssistantMessage?: string;
   turnStatus: 'in_progress' | 'complete' | 'emergency' | string;
   immediateAttentionRequired: boolean;
   informationComplete: boolean;
