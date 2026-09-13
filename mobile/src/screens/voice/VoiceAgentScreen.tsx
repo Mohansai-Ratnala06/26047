@@ -126,7 +126,7 @@ export const VoiceAgentScreen: React.FC = () => {
       console.warn('Could not fetch existing episodes:', err);
     }
     const createRes = await episodeApi.createEpisode({
-      chiefComplaint: 'Voice Consultation / AI Triage Intake',
+      chiefComplaint: 'Clinical Consultation & Symptom Intake',
       type: 'symptom',
     });
     if (createRes?.success && createRes.data?._id) {

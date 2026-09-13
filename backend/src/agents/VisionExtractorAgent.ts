@@ -23,14 +23,25 @@ export interface ExtractedLabTest {
 }
 
 export interface ExtractedClinicalData {
+  is_medical_document: boolean;
+  medical_document_confidence?: number;
+  document_classification?: string;
+  rejection_reason?: string | null;
   patient?: {
     name?: string | null;
     age?: string | null;
     gender?: string | null;
     date?: string | null;
   };
+  clinic?: {
+    name?: string | null;
+    doctor?: string | null;
+  };
+  document_date?: string | null;
   vitals?: ExtractedVital[];
   diagnoses: string[];
+  immunizations?: string[];
+  procedures?: string[];
   medications: ExtractedMedication[];
   tests: ExtractedLabTest[];
   advice: string[];
@@ -52,7 +63,35 @@ export interface VisionExtractorResponse {
 }
 
 const EXTRACTION_PROMPT = `
-You are an expert clinical document analyzer. Analyze the provided clinical document (handwritten prescription, lab report, or diagnostic summary) and extract all clinical details into a strictly valid JSON object.
+You are an expert clinical document analyzer for VAIDYAARC. Analyze the provided file (image or PDF) in TWO MANDATORY STAGES.
+
+STAGE 1: MEDICAL DOCUMENT VALIDATION
+Carefully examine the entire image/document:
+- Is this a genuine medical, health, or clinical document? (Examples: doctor prescription, lab/pathology test report, hospital discharge summary, radiology/imaging report, blood donation certificate, vaccination card, medical certificate, clinic bill/receipt with diagnoses or medications).
+- If it is clearly NON-MEDICAL (e.g. a photo of a bedsheet, fabric, furniture, random pet/selfie, grocery bill, food item, scenery, blank page, meme):
+  Set "is_medical_document": false
+  Set "medical_document_confidence": 0.98
+  Set "document_classification": "Non-Medical"
+  Set "rejection_reason": "We were unable to process your record because the uploaded file is not a medical document."
+  Set all clinical fields (patient, clinic, vitals, diagnoses, immunizations, procedures, medications, tests, advice) to empty or null.
+- If it IS a medical or healthcare document:
+  Set "is_medical_document": true
+  Set "medical_document_confidence": 0.95+
+  Set "document_classification": (e.g., "Doctor Prescription", "Laboratory/Pathology Report", "Hospital Discharge Summary", "Diagnostic Imaging/Radiology", "Blood Donor Certificate", "Vaccination / Immunization Record", or other specific medical type)
+  Set "rejection_reason": null
+
+STAGE 2: STRUCTURED CLINICAL EXTRACTION (when is_medical_document is true)
+Extract all available structured clinical data:
+- patient: name, age, gender, date.
+- clinic: clinic / hospital / laboratory facility name, doctor name.
+- document_date: the canonical clinical event or test date (YYYY-MM-DD or standard date format).
+- vitals: parameter (e.g. BP, Pulse, Temperature, SpO2), value, unit.
+- diagnoses: list of clinical diagnoses, conditions, impressions, or reasons for encounter.
+- immunizations: list of vaccines / immunizations mentioned.
+- procedures: list of surgeries, interventions, or clinical procedures performed.
+- medications: list of prescribed/administered drugs with name, dosage, frequency, duration.
+- tests: laboratory tests or investigations with test_name, result, unit, reference_range.
+- advice: doctor's advice, lifestyle advice, diet, precautions, follow-up instructions.
 
 Follow these strict output rules:
 1. Return ONLY the raw JSON object. Do not include markdown code block syntax (like \`\`\`json), commentary, or extra text.
@@ -60,12 +99,21 @@ Follow these strict output rules:
 
 Required JSON Schema:
 {
+  "is_medical_document": boolean,
+  "medical_document_confidence": number,
+  "document_classification": string,
+  "rejection_reason": string or null,
   "patient": {
     "name": string or null,
     "age": string or null,
     "gender": string or null,
     "date": string or null
   },
+  "clinic": {
+    "name": string or null,
+    "doctor": string or null
+  },
+  "document_date": string or null,
   "vitals": [
     {
       "parameter": string,
@@ -74,6 +122,8 @@ Required JSON Schema:
     }
   ],
   "diagnoses": [string],
+  "immunizations": [string],
+  "procedures": [string],
   "medications": [
     {
       "name": string,
@@ -278,31 +328,33 @@ export class VisionExtractorAgent {
   }
 
   /**
-   * Directly extracts structured clinical data from image buffer or local file
-   * using Google Gemini Multimodal Vision API in-process (Zero Python microservice overhead).
+   * Extracts structured clinical data from an uploaded image using Google Gemini
+   * Multimodal Vision API as the sole decision-maker for medical document validation.
+   * Gemini determines whether the image is a medical document AND extracts clinical data.
    */
   async scanAndSummarize(
     filePath: string,
     originalFilename: string,
     mimeType: string
   ): Promise<VisionExtractorResponse> {
-    const apiKey = process.env.GEMINI_API_KEY || this.geminiApiKey;
-    if (!apiKey) {
-      throw new Error(
-        'GEMINI_API_KEY is not configured in environment. Please set GEMINI_API_KEY in your .env file.'
-      );
-    }
-
     if (!fs.existsSync(filePath)) {
       throw new Error(`File not found at path: ${filePath}`);
     }
 
-    const fileBuffer = fs.readFileSync(filePath);
-    const encodedData = fileBuffer.toString('base64');
-
     // Normalize MIME type
     let normalizedMimeType = mimeType || 'image/jpeg';
     if (normalizedMimeType.includes('jpg')) normalizedMimeType = 'image/jpeg';
+
+    const apiKey = process.env.GEMINI_API_KEY || this.geminiApiKey;
+    if (!apiKey || apiKey.includes('placeholder') || apiKey.trim().length < 16) {
+      throw new Error(
+        'GEMINI_API_KEY is not configured. Please set a valid Gemini API key in backend/.env to enable medical document validation.'
+      );
+    }
+
+    // Read file and encode as base64 for Gemini Vision
+    const fileBuffer = fs.readFileSync(filePath);
+    const encodedData = fileBuffer.toString('base64');
 
     const payload = {
       contents: [
@@ -324,22 +376,18 @@ export class VisionExtractorAgent {
       },
     };
 
-    const models = [
-      'gemini-flash-latest',
-      'gemini-3.6-flash',
-      'gemini-3.5-flash',
-      'gemini-robotics-er-2-preview',
-    ];
-
-    let lastError: string | null = null;
+    // Use gemini-3.6-flash — confirmed available and working with this API key
+    const models = ['gemini-3.6-flash', 'gemini-3.5-flash'];
     let extractedClinicalData: ExtractedClinicalData | null = null;
+    let lastError: string | null = null;
 
     for (const model of models) {
       const url = `${this.baseUrl}/${model}:generateContent?key=${apiKey}`;
       try {
+        console.log(`[VisionExtractorAgent] Sending to Gemini model: ${model}`);
         const response = await axios.post(url, payload, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 75000,
+          timeout: 60000,
         });
 
         if (response.status === 200 && response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -352,22 +400,62 @@ export class VisionExtractorAgent {
             .trim();
 
           extractedClinicalData = JSON.parse(cleanedText) as ExtractedClinicalData;
-          break;
+          console.log(
+            `[VisionExtractorAgent] Gemini (${model}) decision — is_medical_document: ${extractedClinicalData.is_medical_document}`
+          );
+
+          // If Gemini didn't set is_medical_document explicitly, infer from extracted content
+          if (typeof extractedClinicalData.is_medical_document !== 'boolean') {
+            const hasClinicalSignals =
+              (extractedClinicalData.diagnoses?.length || 0) > 0 ||
+              (extractedClinicalData.medications?.length || 0) > 0 ||
+              (extractedClinicalData.tests?.length || 0) > 0 ||
+              (extractedClinicalData.immunizations?.length || 0) > 0 ||
+              (extractedClinicalData.procedures?.length || 0) > 0 ||
+              Boolean(extractedClinicalData.patient?.name);
+            extractedClinicalData.is_medical_document = hasClinicalSignals;
+          }
+
+          // Set rejection reason if not a medical document
+          if (!extractedClinicalData.is_medical_document && !extractedClinicalData.rejection_reason) {
+            extractedClinicalData.rejection_reason =
+              'No medical data found. Please check your image and ensure you upload a clear medical document (such as a doctor prescription, lab report, or discharge summary).';
+          }
+
+          // Ensure all array fields are always present
+          extractedClinicalData.diagnoses = extractedClinicalData.diagnoses || [];
+          extractedClinicalData.immunizations = extractedClinicalData.immunizations || [];
+          extractedClinicalData.procedures = extractedClinicalData.procedures || [];
+          extractedClinicalData.medications = extractedClinicalData.medications || [];
+          extractedClinicalData.tests = extractedClinicalData.tests || [];
+          extractedClinicalData.vitals = extractedClinicalData.vitals || [];
+          extractedClinicalData.advice = extractedClinicalData.advice || [];
+
+          break; // Success — stop trying more models
         } else {
-          lastError = JSON.stringify(response.data);
+          lastError = `Unexpected response structure from ${model}: ` + JSON.stringify(response.data);
+          console.warn(`[VisionExtractorAgent] ${lastError}`);
         }
       } catch (err: any) {
         lastError = err.response?.data?.error?.message || err.message;
+        console.warn(`[VisionExtractorAgent] Gemini model ${model} failed: ${lastError}`);
       }
     }
 
+    // If both models failed, throw — let the controller return a proper rejection to the user
     if (!extractedClinicalData) {
-      throw new Error(`Multimodal clinical extraction failed across all models. Last error: ${lastError}`);
+      throw new Error(
+        `Gemini Vision analysis failed: ${lastError || 'No response from API'}. Please try again.`
+      );
     }
 
-    // Run clinical safety checks & FHIR bundling in-process
-    const safetyAlerts = checkDrugSafety(extractedClinicalData.medications || []);
-    const fhirBundle = buildFhirBundle(extractedClinicalData);
+    // Run clinical safety checks & FHIR bundling only for valid medical documents
+    const safetyAlerts = extractedClinicalData.is_medical_document
+      ? checkDrugSafety(extractedClinicalData.medications || [])
+      : [];
+    const fhirBundle = extractedClinicalData.is_medical_document
+      ? buildFhirBundle(extractedClinicalData)
+      : null;
 
     return {
       success: true,

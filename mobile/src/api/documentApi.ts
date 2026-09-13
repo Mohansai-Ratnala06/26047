@@ -11,11 +11,24 @@ export interface UploadDocumentParams {
   hospital?: string;
   doctor?: string;
   episodeId?: string;
+  consent?: boolean;
 }
 
 export const documentApi = {
   getDocuments: (): Promise<any> => {
     return apiClient.get('/documents');
+  },
+
+  getDocumentById: (documentId: string): Promise<any> => {
+    return apiClient.get(`/documents/${documentId}`);
+  },
+
+  getDocumentFileUrl: (documentId: string): string => {
+    return `${API_BASE_URL}/documents/${documentId}/file`;
+  },
+
+  deleteDocument: (documentId: string): Promise<any> => {
+    return apiClient.delete(`/documents/${documentId}`);
   },
 
   uploadDocument: async (params: UploadDocumentParams): Promise<any> => {
@@ -36,6 +49,7 @@ export const documentApi = {
         if (params.hospital) parameters.hospital = params.hospital;
         if (params.doctor) parameters.doctor = params.doctor;
         if (params.episodeId) parameters.episodeId = params.episodeId;
+        if (params.consent !== undefined) parameters.consent = String(params.consent);
 
         const result = await file.upload(targetUrl, {
           httpMethod: 'POST',
@@ -77,6 +91,9 @@ export const documentApi = {
     }
     if (params.episodeId) {
       formData.append('episodeId', params.episodeId);
+    }
+    if (params.consent !== undefined) {
+      formData.append('consent', String(params.consent));
     }
 
     const response = await fetch(targetUrl, {

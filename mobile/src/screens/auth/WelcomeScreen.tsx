@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Card, GlassCard, Button, Badge } from '../../components';
 import { colors, spacing, typography, borderRadius } from '../../theme';
@@ -28,13 +28,14 @@ export const WelcomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
   return (
     <ScreenContainer scrollable contentContainerStyle={styles.container}>
       <Animated.View style={[styles.heroSection, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-        <View style={styles.iconOrb}>
-          <Ionicons name="fitness" size={44} color="#FFFFFF" />
-        </View>
+        <Image
+          source={require('../../../assets/logo.png')}
+          style={styles.brandLogo}
+          resizeMode="contain"
+        />
 
         <Badge label="Clinical Intelligence Platform" variant="mint" style={styles.topBadge} />
 
-        <Text style={styles.brandTitle}>Vaidyaarc</Text>
         <Text style={styles.tagline}>
           High-trust clinical intelligence, seamless telemedicine, and unified health records.
         </Text>
@@ -89,25 +90,15 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     alignItems: 'center',
-    marginTop: spacing.xl,
+    marginTop: spacing.md,
   },
-  iconOrb: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
+  brandLogo: {
+    width: 220,
+    height: 150,
+    marginBottom: spacing.xs,
   },
   topBadge: {
     marginBottom: spacing.sm,
-  },
-  brandTitle: {
-    fontSize: typography.fontSize.hero,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
-    letterSpacing: -0.5,
   },
   tagline: {
     fontSize: typography.fontSize.sm,

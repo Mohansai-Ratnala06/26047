@@ -17,11 +17,26 @@ export type ExtractionStatus =
 
 export type VerificationStatus = 'unverified' | 'reviewed' | 'verified';
 
+export type MedicalDocumentStatus =
+  | 'pending'
+  | 'medical_document'
+  | 'not_medical_document'
+  | 'unreadable'
+  | 'failed';
+
 export interface IMedicalDocument extends Document {
   documentCode: string;
   patientId: Types.ObjectId;
   episodeId?: Types.ObjectId;
   documentType: DocumentType;
+  medicalDocumentStatus: MedicalDocumentStatus;
+  rejectionReason?: string;
+  patientConsent?: {
+    consented: boolean;
+    consentedAt: Date;
+    purpose?: string;
+    version?: number;
+  };
   source: {
     hospital?: string;
     doctor?: string;
@@ -36,10 +51,21 @@ export interface IMedicalDocument extends Document {
   };
   extractionStatus: ExtractionStatus;
   extractedData: {
+    patientName?: string;
+    reportedDate?: string;
+    clinicName?: string;
+    healthDocumentType?: string;
     diagnoses?: string[];
+    immunizations?: string[];
+    procedures?: string[];
     medications?: string[];
     investigations?: string[];
-    procedures?: string[];
+    tests?: Array<{
+      test_name: string;
+      result: string;
+      unit?: string | null;
+      reference_range?: string | null;
+    }>;
     abnormalValues?: string[];
     vitals?: Array<{ parameter: string; value: string; unit?: string | null }>;
     advice?: string[];
@@ -86,6 +112,18 @@ const MedicalDocumentSchema = new Schema<IMedicalDocument>(
       enum: ['prescription', 'laboratory_report', 'discharge_summary', 'imaging', 'consultation_note', 'other'],
       required: true,
     },
+    medicalDocumentStatus: {
+      type: String,
+      enum: ['pending', 'medical_document', 'not_medical_document', 'unreadable', 'failed'],
+      default: 'pending',
+    },
+    rejectionReason: { type: String },
+    patientConsent: {
+      consented: { type: Boolean, default: false },
+      consentedAt: { type: Date },
+      purpose: { type: String },
+      version: { type: Number, default: 1 },
+    },
     source: {
       hospital: { type: String },
       doctor: { type: String },
@@ -104,10 +142,23 @@ const MedicalDocumentSchema = new Schema<IMedicalDocument>(
       default: 'pending',
     },
     extractedData: {
+      patientName: { type: String },
+      reportedDate: { type: String },
+      clinicName: { type: String },
+      healthDocumentType: { type: String },
       diagnoses: [{ type: String }],
+      immunizations: [{ type: String }],
+      procedures: [{ type: String }],
       medications: [{ type: String }],
       investigations: [{ type: String }],
-      procedures: [{ type: String }],
+      tests: [
+        {
+          test_name: { type: String },
+          result: { type: String },
+          unit: { type: String },
+          reference_range: { type: String },
+        },
+      ],
       abnormalValues: [{ type: String }],
       vitals: [
         {

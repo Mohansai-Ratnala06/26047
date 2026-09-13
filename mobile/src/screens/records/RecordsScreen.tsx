@@ -11,22 +11,27 @@ import {
   StatusBar,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '../../theme';
 import { Badge, Button, LoadingState, ErrorState } from '../../components';
 import { apiClient } from '../../api/apiClient';
-import { episodeApi } from '../../api/episodeApi';
+import { episodeApi, TimelineEpisode } from '../../api/episodeApi';
 import { documentApi } from '../../api/documentApi';
 import { useAuthStore } from '../../store/authStore';
 import * as ImagePicker from 'expo-image-picker';
+import { PatientHealthTimeline } from './timeline';
+import { DocumentUploadWorkflowModal } from './upload/DocumentUploadWorkflowModal';
+import { SmartReportView } from './upload/SmartReportView';
+import { OriginalReportView } from './upload/OriginalReportView';
 
 // ==========================================
 // Types
 // ==========================================
 
-export type RecordCategoryTab = 'all' | 'uploaded' | 'linked';
+export type RecordCategoryTab = 'timeline' | 'uploaded' | 'linked';
 
 export interface UnifiedRecord {
   id: string;
@@ -45,6 +50,8 @@ export interface UnifiedRecord {
   medications?: string[];
   investigations?: string[];
   procedures?: string[];
+  immunizations?: string[];
+  tests?: Array<{ test_name: string; result: string; unit?: string | null; reference_range?: string | null }>;
   abnormalValues?: string[];
   vitals?: Array<{ parameter: string; value: string; unit?: string | null }>;
   advice?: string[];
@@ -62,7 +69,9 @@ export interface UnifiedRecord {
     size?: number;
     contentType?: string;
     bucket?: string;
+    fileName?: string;
   };
+  extractedData?: any;
 }
 
 // ==========================================
@@ -165,7 +174,9 @@ const RecordCard: React.FC<RecordCardProps> = ({
         </View>
 
         <View style={styles.cardFacilityCol}>
-          <Text style={styles.cardMetaLabel}>Facility Name</Text>
+          <Text style={styles.cardMetaLabel}>
+            {record.category === 'uploaded' ? 'Document Source' : 'Facility Name'}
+          </Text>
           <Text style={styles.cardFacilityName} numberOfLines={1}>
             {record.facilityName}
           </Text>
@@ -255,7 +266,8 @@ export const RecordsScreen: React.FC = () => {
   const { user } = useAuthStore();
 
   // State
-  const [activeTab, setActiveTab] = useState<RecordCategoryTab>('all');
+  const [activeTab, setActiveTab] = useState<RecordCategoryTab>('timeline');
+  const [timelineEpisodes, setTimelineEpisodes] = useState<TimelineEpisode[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [records, setRecords] = useState<UnifiedRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -265,12 +277,11 @@ export const RecordsScreen: React.FC = () => {
   // Modals & UI Controls
   const [selectedRecord, setSelectedRecord] = useState<UnifiedRecord | null>(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [detailTab, setDetailTab] = useState<'smart' | 'original'>('smart');
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [linkInfoModalVisible, setLinkInfoModalVisible] = useState(false);
   const [optionsModalVisible, setOptionsModalVisible] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgressText, setUploadProgressText] = useState('');
 
   // Filters & Bookmarks
   const [bookmarkedIds, setBookmarkedIds] = useState<Record<string, boolean>>({});
@@ -301,24 +312,36 @@ export const RecordsScreen: React.FC = () => {
           : [];
 
         docList.forEach((doc: any) => {
-          const isLinked = Boolean(
-            doc.source?.hospital ||
-              doc.verification?.status === 'verified' ||
-              doc.storage?.provider === 'abdm'
-          );
+          const rawHospital = (doc.source?.hospital || doc.source?.facility || '').trim();
+          const isGenericSelf =
+            !rawHospital ||
+            rawHospital.toLowerCase() === 'self uploaded' ||
+            rawHospital.toLowerCase() === 'self uploaded document' ||
+            rawHospital.toLowerCase() === 'patient uploaded';
+
+          // A document is a linked record ONLY if explicitly linked from ABDM or an external healthcare provider
+          const isLinked =
+            doc.storage?.provider === 'abdm' ||
+            doc.source?.origin === 'abdm' ||
+            doc.source?.origin === 'linked' ||
+            doc.source?.origin === 'hospital_linked';
+
+          const category: 'linked' | 'uploaded' = isLinked ? 'linked' : 'uploaded';
+          const statusBadge: 'Linked Record' | 'Self Uploaded' = isLinked ? 'Linked Record' : 'Self Uploaded';
+
+          const facilityName = !isGenericSelf
+            ? rawHospital
+            : (isLinked ? 'Linked Healthcare Facility' : 'Self Uploaded Document');
 
           unified.push({
             id: doc._id || doc.documentCode || Math.random().toString(),
             code: doc.documentCode || doc.patientRefNumber || 'REF-UNLINKED',
-            facilityName:
-              doc.source?.hospital ||
-              doc.source?.facility ||
-              (isLinked ? 'Linked Healthcare Facility' : 'Self Uploaded Document'),
+            facilityName,
             doctorName: doc.source?.doctor,
             documentType: formatDocumentType(doc.documentType),
             rawType: doc.documentType,
-            category: isLinked ? 'linked' : 'uploaded',
-            statusBadge: isLinked ? 'Linked Record' : 'Self Uploaded',
+            category,
+            statusBadge,
             date: formatRecordDate(doc.source?.documentDate || doc.createdAt),
             rawDate: doc.source?.documentDate || doc.createdAt,
             verificationStatus: doc.verification?.status || 'unverified',
@@ -327,16 +350,19 @@ export const RecordsScreen: React.FC = () => {
             medications: doc.extractedData?.medications,
             investigations: doc.extractedData?.investigations,
             procedures: doc.extractedData?.procedures,
+            immunizations: doc.extractedData?.immunizations,
+            tests: doc.extractedData?.tests,
             abnormalValues: doc.extractedData?.abnormalValues,
             vitals: doc.extractedData?.vitals,
             advice: doc.extractedData?.advice,
             safetyAlerts: doc.safetyAlerts,
             brainAnalysis: doc.brainAnalysis,
             storageInfo: doc.storage,
+            extractedData: doc.extractedData,
           });
         });
       } catch (docErr) {
-        console.warn('Documents fetch note:', docErr);
+        console.log('Documents fetch note:', docErr);
       }
 
       // 2. Fetch real episodes from /episodes endpoint
@@ -347,6 +373,8 @@ export const RecordsScreen: React.FC = () => {
           : Array.isArray(epRes)
           ? epRes
           : [];
+
+        setTimelineEpisodes(epList);
 
         epList.forEach((ep: any) => {
           const doctorName =
@@ -373,13 +401,13 @@ export const RecordsScreen: React.FC = () => {
           });
         });
       } catch (epErr) {
-        console.warn('Episodes fetch note:', epErr);
+        console.log('Episodes fetch note:', epErr);
       }
 
       setRecords(unified);
       return unified;
     } catch (err: any) {
-      console.warn('Failed to fetch records:', err?.message || err);
+      console.log('Failed to fetch records:', err?.message || err);
       setError('Unable to load records. Please verify your connection.');
     } finally {
       setLoading(false);
@@ -431,6 +459,9 @@ export const RecordsScreen: React.FC = () => {
 
   // Search placeholder based on reference UX
   const searchPlaceholder = useMemo(() => {
+    if (activeTab === 'timeline') {
+      return 'Search Episodes, Symptoms or Complaints';
+    }
     if (activeTab === 'uploaded') {
       return 'Search by Facility, Test or Health Document';
     }
@@ -447,6 +478,7 @@ export const RecordsScreen: React.FC = () => {
 
   const handleOpenDetail = (record: UnifiedRecord) => {
     setSelectedRecord(record);
+    setDetailTab('smart');
     setDetailModalVisible(true);
   };
 
@@ -455,84 +487,92 @@ export const RecordsScreen: React.FC = () => {
     setOptionsModalVisible(true);
   };
 
-  const handleSelectDocument = async (docType: string) => {
-    try {
-      setUploadModalVisible(false);
+  const handleDeleteRecord = (record: UnifiedRecord) => {
+    // Dismiss options popup first
+    setOptionsModalVisible(false);
 
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        alert('Permission to access photo gallery is required to upload medical documents.');
-        return;
+    Alert.alert(
+      'Delete Health Record?',
+      `CAUTION: Are you sure you want to permanently delete this record?\n\n• Document: ${record.documentType || 'Health Document'}\n• Code: ${record.code}\n\nThis will permanently remove the original medical file, clinical extractions, AI analysis, and all database records without any trace.\n\nThis action cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await documentApi.deleteDocument(record.id);
+
+              if (selectedRecord?.id === record.id) {
+                setDetailModalVisible(false);
+                setSelectedRecord(null);
+              }
+
+              // Refresh list and timeline from server
+              await fetchRecords(true);
+
+              Alert.alert(
+                'Record Deleted',
+                'The health record and all associated files have been permanently deleted.'
+              );
+            } catch (err: any) {
+              Alert.alert(
+                'Delete Failed',
+                err.message || 'Unable to delete this health record. Please try again.'
+              );
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleUploadSuccess = async (uploadedDoc: any) => {
+    setUploadModalVisible(false);
+    setActiveTab('uploaded');
+    const refreshedList = await fetchRecords(true);
+    if (uploadedDoc) {
+      const docId = uploadedDoc._id || uploadedDoc.id;
+      const matching = (refreshedList || []).find((r: UnifiedRecord) => r.id === docId);
+      if (matching) {
+        setSelectedRecord(matching);
+      } else {
+        setSelectedRecord({
+          id: docId || Math.random().toString(),
+          code: uploadedDoc.documentCode || 'DOC-NEW',
+          facilityName: uploadedDoc.source?.hospital || 'Self Uploaded Document',
+          doctorName: uploadedDoc.source?.doctor,
+          documentType: formatDocumentType(uploadedDoc.documentType),
+          rawType: uploadedDoc.documentType,
+          category: 'uploaded',
+          statusBadge: 'Self Uploaded',
+          date: formatRecordDate(uploadedDoc.source?.documentDate || uploadedDoc.createdAt),
+          rawDate: uploadedDoc.source?.documentDate || uploadedDoc.createdAt,
+          verificationStatus: uploadedDoc.verification?.status || 'unverified',
+          extractionStatus: uploadedDoc.extractionStatus || 'completed',
+          diagnoses: uploadedDoc.extractedData?.diagnoses,
+          medications: uploadedDoc.extractedData?.medications,
+          investigations: uploadedDoc.extractedData?.investigations,
+          procedures: uploadedDoc.extractedData?.procedures,
+          immunizations: uploadedDoc.extractedData?.immunizations,
+          tests: uploadedDoc.extractedData?.tests,
+          abnormalValues: uploadedDoc.extractedData?.abnormalValues,
+          vitals: uploadedDoc.extractedData?.vitals,
+          advice: uploadedDoc.extractedData?.advice,
+          safetyAlerts: uploadedDoc.safetyAlerts,
+          brainAnalysis: uploadedDoc.brainAnalysis,
+          storageInfo: uploadedDoc.storage,
+          extractedData: uploadedDoc.extractedData,
+        });
       }
-
-      const pickerResult = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 0.85,
-      });
-
-      if (pickerResult.canceled || !pickerResult.assets || pickerResult.assets.length === 0) {
-        return;
-      }
-
-      const asset = pickerResult.assets[0];
-      setIsUploading(true);
-      setUploadProgressText('Extracting clinical metadata with AI...');
-
-      const filename = asset.fileName || `document_${Date.now()}.jpg`;
-      const mimeType = asset.mimeType || 'image/jpeg';
-
-      const uploadResult = await documentApi.uploadDocument({
-        uri: asset.uri,
-        name: filename,
-        type: mimeType,
-        documentType: docType,
-      });
-
-      if (uploadResult?.success) {
-        setActiveTab('uploaded');
-        const refreshedList = await fetchRecords(true);
-        const uploadedDoc = uploadResult.data;
-        if (uploadedDoc) {
-          const docId = uploadedDoc._id || uploadedDoc.id;
-          const matching = (refreshedList || []).find((r: UnifiedRecord) => r.id === docId);
-          if (matching) {
-            setSelectedRecord(matching);
-          } else {
-            setSelectedRecord({
-              id: docId || Math.random().toString(),
-              code: uploadedDoc.documentCode || 'DOC-NEW',
-              facilityName: uploadedDoc.source?.hospital || 'Self Uploaded Document',
-              doctorName: uploadedDoc.source?.doctor,
-              documentType: formatDocumentType(uploadedDoc.documentType),
-              rawType: uploadedDoc.documentType,
-              category: 'uploaded',
-              statusBadge: 'Self Uploaded',
-              date: formatRecordDate(uploadedDoc.source?.documentDate || uploadedDoc.createdAt),
-              rawDate: uploadedDoc.source?.documentDate || uploadedDoc.createdAt,
-              verificationStatus: uploadedDoc.verification?.status || 'unverified',
-              extractionStatus: uploadedDoc.extractionStatus || 'completed',
-              diagnoses: uploadedDoc.extractedData?.diagnoses,
-              medications: uploadedDoc.extractedData?.medications,
-              investigations: uploadedDoc.extractedData?.investigations,
-              procedures: uploadedDoc.extractedData?.procedures,
-              abnormalValues: uploadedDoc.extractedData?.abnormalValues,
-              vitals: uploadedDoc.extractedData?.vitals,
-              advice: uploadedDoc.extractedData?.advice,
-              safetyAlerts: uploadedDoc.safetyAlerts,
-              brainAnalysis: uploadedDoc.brainAnalysis,
-              storageInfo: uploadedDoc.storage,
-            });
-          }
-          setDetailModalVisible(true);
-        }
-      }
-    } catch (err: any) {
-      console.warn('Document upload error:', err?.message || err);
-      alert(err?.message || 'Unable to upload document. Please check your connection.');
-    } finally {
-      setIsUploading(false);
-      setUploadProgressText('');
+      setDetailTab('smart');
+      setDetailModalVisible(true);
     }
   };
 
@@ -566,20 +606,20 @@ export const RecordsScreen: React.FC = () => {
             activeOpacity={0.85}
             style={[
               styles.segmentItem,
-              activeTab === 'all' && styles.segmentItemActive,
+              activeTab === 'timeline' && styles.segmentItemActive,
             ]}
-            onPress={() => setActiveTab('all')}
+            onPress={() => setActiveTab('timeline')}
             accessibilityRole="tab"
-            accessibilityState={{ selected: activeTab === 'all' }}
-            accessibilityLabel="All Records tab"
+            accessibilityState={{ selected: activeTab === 'timeline' }}
+            accessibilityLabel="Timeline tab"
           >
             <Text
               style={[
                 styles.segmentText,
-                activeTab === 'all' && styles.segmentTextActive,
+                activeTab === 'timeline' && styles.segmentTextActive,
               ]}
             >
-              All Records
+              Timeline
             </Text>
           </TouchableOpacity>
 
@@ -658,8 +698,8 @@ export const RecordsScreen: React.FC = () => {
           ) : null}
         </View>
 
-        {/* Filter Button: Highlighted or shown on All Records */}
-        {activeTab === 'all' ? (
+        {/* Filter Button: Shown on uploaded and linked tabs */}
+        {activeTab === 'uploaded' || activeTab === 'linked' ? (
           <TouchableOpacity
             activeOpacity={0.82}
             onPress={() => setFilterModalVisible(true)}
@@ -680,7 +720,26 @@ export const RecordsScreen: React.FC = () => {
       </View>
 
       {/* 4. Main Scrollable Content Area */}
-      {loading && !refreshing ? (
+      {activeTab === 'timeline' ? (
+        <PatientHealthTimeline
+          episodes={timelineEpisodes}
+          loading={loading}
+          refreshing={refreshing}
+          error={error}
+          onRefresh={() => fetchRecords(true)}
+          searchQuery={searchQuery}
+          onOpenRecordDocument={(episodeId) => {
+            const matchingRecord = records.find(
+              (r) => r.id === episodeId || r.code?.includes(episodeId)
+            );
+            if (matchingRecord) {
+              handleOpenDetail(matchingRecord);
+            } else if (records.length > 0) {
+              handleOpenDetail(records[0]);
+            }
+          }}
+        />
+      ) : loading && !refreshing ? (
         <LoadingState message="Loading health records..." style={styles.centerFlex} />
       ) : error ? (
         <View style={styles.errorWrapper}>
@@ -713,9 +772,7 @@ export const RecordsScreen: React.FC = () => {
                   ? 'No records match your search criteria. Try a different query or clear filters.'
                   : activeTab === 'uploaded'
                   ? 'You have not uploaded any records yet. Tap Upload below to add your prescriptions or lab tests.'
-                  : activeTab === 'linked'
-                  ? 'No clinical records have been linked from hospitals or diagnostic labs yet.'
-                  : 'No health records found in this category. You can upload or link new medical documents.'}
+                  : 'No clinical records have been linked from hospitals or diagnostic labs yet.'}
               </Text>
               <TouchableOpacity
                 activeOpacity={0.85}
@@ -776,92 +833,104 @@ export const RecordsScreen: React.FC = () => {
 
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalHeaderTitle}>Record Details</Text>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => setDetailModalVisible(false)}
-                style={styles.modalCloseBtn}
-              >
-                <Ionicons name="close" size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (selectedRecord) {
+                      handleDeleteRecord(selectedRecord);
+                    }
+                  }}
+                  style={[styles.modalCloseBtn, { backgroundColor: '#FEF2F2' }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete Record"
+                >
+                  <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setDetailModalVisible(false)}
+                  style={styles.modalCloseBtn}
+                >
+                  <Ionicons name="close" size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
             </View>
 
+            {/* Dual View Segmented Switcher */}
             {selectedRecord && (
-              <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBodyScroll}>
-                {/* Facility & Type Badge */}
-                <View style={styles.modalFacilityBox}>
-                  <View style={styles.modalFacilityHeader}>
-                    <Text style={styles.modalMetaLabel}>HEALTHCARE FACILITY</Text>
-                    <Badge
-                      label={selectedRecord.statusBadge}
-                      variant="mint"
-                      size="sm"
-                    />
-                  </View>
-                  <Text style={styles.modalFacilityTitle}>
-                    {selectedRecord.facilityName}
+              <View style={styles.detailTabBar}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={[
+                    styles.detailTabBtn,
+                    detailTab === 'smart' && styles.detailTabBtnActive,
+                  ]}
+                  onPress={() => setDetailTab('smart')}
+                >
+                  <Ionicons
+                    name="sparkles"
+                    size={15}
+                    color={detailTab === 'smart' ? '#FFFFFF' : colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.detailTabBtnText,
+                      detailTab === 'smart' && styles.detailTabBtnTextActive,
+                    ]}
+                  >
+                    Smart Report
                   </Text>
-                  {selectedRecord.doctorName ? (
-                    <Text style={styles.modalDoctorSubtitle}>
-                      Prescribing / Consulting Doctor: Dr. {selectedRecord.doctorName}
-                    </Text>
-                  ) : null}
-                </View>
+                </TouchableOpacity>
 
-                {/* Metadata Grid */}
-                <View style={styles.modalGrid}>
-                  <View style={styles.modalGridCol}>
-                    <Text style={styles.modalMetaLabel}>DOCUMENT TYPE</Text>
-                    <Text style={styles.modalGridValue}>
-                      {selectedRecord.documentType}
-                    </Text>
-                  </View>
-                  <View style={styles.modalGridCol}>
-                    <Text style={styles.modalMetaLabel}>DATE</Text>
-                    <Text style={styles.modalGridValue}>{selectedRecord.date}</Text>
-                  </View>
-                </View>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={[
+                    styles.detailTabBtn,
+                    detailTab === 'original' && styles.detailTabBtnActive,
+                  ]}
+                  onPress={() => setDetailTab('original')}
+                >
+                  <Ionicons
+                    name="document-text"
+                    size={15}
+                    color={detailTab === 'original' ? '#FFFFFF' : colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.detailTabBtnText,
+                      detailTab === 'original' && styles.detailTabBtnTextActive,
+                    ]}
+                  >
+                    Original Document
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-                <View style={styles.modalGrid}>
-                  <View style={styles.modalGridCol}>
-                    <Text style={styles.modalMetaLabel}>REFERENCE CODE</Text>
-                    <Text style={styles.modalGridCode}>{selectedRecord.code}</Text>
-                  </View>
-                  <View style={styles.modalGridCol}>
-                    <Text style={styles.modalMetaLabel}>VERIFICATION</Text>
-                    <Text
-                      style={[
-                        styles.modalGridValue,
-                        {
-                          color:
-                            selectedRecord.verificationStatus === 'verified'
-                              ? colors.success
-                              : colors.textSecondary,
-                        },
-                      ]}
-                    >
-                      {selectedRecord.verificationStatus
-                        ? selectedRecord.verificationStatus.toUpperCase()
-                        : 'UNVERIFIED'}
-                    </Text>
-                  </View>
-                </View>
+            {selectedRecord && detailTab === 'smart' ? (
+              <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBodyScroll}>
+                <SmartReportView
+                  data={{
+                    patientName: selectedRecord.extractedData?.patientName,
+                    reportedDate: selectedRecord.extractedData?.reportedDate || selectedRecord.date,
+                    clinicName: selectedRecord.facilityName,
+                    healthDocumentType: selectedRecord.documentType,
+                    diagnoses: selectedRecord.diagnoses,
+                    immunizations: selectedRecord.immunizations,
+                    procedures: selectedRecord.procedures,
+                    medications: selectedRecord.medications,
+                    investigations: selectedRecord.investigations,
+                    tests: selectedRecord.tests,
+                    vitals: selectedRecord.vitals,
+                    advice: selectedRecord.advice,
+                    safetyAlerts: selectedRecord.safetyAlerts,
+                  }}
+                  documentCode={selectedRecord.code}
+                  onViewOriginal={() => setDetailTab('original')}
+                />
 
-                {/* 0. Drug Safety Alerts Banner */}
-                {selectedRecord.safetyAlerts && selectedRecord.safetyAlerts.length > 0 ? (
-                  <View style={styles.modalAlertBox}>
-                    <View style={styles.modalAlertHeader}>
-                      <Ionicons name="warning" size={18} color="#B91C1C" />
-                      <Text style={styles.modalAlertTitle}>CLINICAL SAFETY ALERT</Text>
-                    </View>
-                    {selectedRecord.safetyAlerts.map((alert, idx) => (
-                      <Text key={idx} style={styles.modalAlertText}>
-                        • {alert.message}
-                      </Text>
-                    ))}
-                  </View>
-                ) : null}
-
-                {/* 1. Vaidyaarc Brain Model Clinical Intelligence Card */}
+                {/* Vaidyaarc Brain Model Clinical Intelligence Card */}
                 {selectedRecord.brainAnalysis?.clinicalSummary ? (
                   <View style={styles.modalBrainBox}>
                     <View style={styles.modalBrainHeader}>
@@ -945,80 +1014,6 @@ export const RecordsScreen: React.FC = () => {
                   </View>
                 ) : null}
 
-                {/* Extracted Diagnoses */}
-                {selectedRecord.diagnoses && selectedRecord.diagnoses.length > 0 ? (
-                  <View style={styles.modalSection}>
-                    <Text style={styles.modalSectionTitle}>Diagnoses</Text>
-                    <View style={styles.tagList}>
-                      {selectedRecord.diagnoses.map((diag, index) => (
-                        <View key={index} style={styles.modalTag}>
-                          <Text style={styles.modalTagText}>{diag}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ) : null}
-
-                {/* Extracted Medications */}
-                {selectedRecord.medications && selectedRecord.medications.length > 0 ? (
-                  <View style={styles.modalSection}>
-                    <Text style={styles.modalSectionTitle}>Prescribed Medications</Text>
-                    <View style={styles.tagList}>
-                      {selectedRecord.medications.map((med, index) => (
-                        <View key={index} style={styles.modalTag}>
-                          <Text style={styles.modalTagText}>{med}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ) : null}
-
-                {/* Extracted Vitals */}
-                {selectedRecord.vitals && selectedRecord.vitals.length > 0 ? (
-                  <View style={styles.modalSection}>
-                    <Text style={styles.modalSectionTitle}>Extracted Vitals</Text>
-                    <View style={styles.vitalsGrid}>
-                      {selectedRecord.vitals.map((vital, index) => (
-                        <View key={index} style={styles.vitalCard}>
-                          <Text style={styles.vitalParamText}>{vital.parameter}</Text>
-                          <Text style={styles.vitalValueText}>
-                            {vital.value} {vital.unit || ''}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ) : null}
-
-                {/* Extracted Investigations / Lab Tests */}
-                {selectedRecord.investigations && selectedRecord.investigations.length > 0 ? (
-                  <View style={styles.modalSection}>
-                    <Text style={styles.modalSectionTitle}>Diagnostic Tests & Investigations</Text>
-                    <View style={styles.testsList}>
-                      {selectedRecord.investigations.map((test, index) => (
-                        <View key={index} style={styles.testCard}>
-                          <Text style={styles.testNameText}>{test}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ) : null}
-
-                {/* Extracted Advice */}
-                {selectedRecord.advice && selectedRecord.advice.length > 0 ? (
-                  <View style={styles.modalSection}>
-                    <Text style={styles.modalSectionTitle}>Clinical Advice & Guidance</Text>
-                    <View style={styles.adviceList}>
-                      {selectedRecord.advice.map((adv, index) => (
-                        <View key={index} style={styles.adviceBullet}>
-                          <Ionicons name="ellipse" size={7} color={colors.primary} style={{ marginTop: 5 }} />
-                          <Text style={styles.adviceText}>{adv}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ) : null}
-
                 {/* Close Button */}
                 <Button
                   title="Done"
@@ -1027,7 +1022,25 @@ export const RecordsScreen: React.FC = () => {
                   style={styles.modalDoneBtn}
                 />
               </ScrollView>
-            )}
+            ) : selectedRecord && detailTab === 'original' ? (
+              <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBodyScroll}>
+                <OriginalReportView
+                  documentId={selectedRecord.id}
+                  documentCode={selectedRecord.code}
+                  documentType={selectedRecord.documentType}
+                  hospital={selectedRecord.facilityName}
+                  date={selectedRecord.date}
+                  mimeType={selectedRecord.storageInfo?.contentType || 'image/jpeg'}
+                  fileName={selectedRecord.storageInfo?.fileName}
+                />
+                <Button
+                  title="Done"
+                  variant="primary"
+                  onPress={() => setDetailModalVisible(false)}
+                  style={styles.modalDoneBtn}
+                />
+              </ScrollView>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -1111,97 +1124,12 @@ export const RecordsScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* C. Upload Modal */}
-      <Modal
+      {/* C. Modern Medical Document Upload Workflow Modal */}
+      <DocumentUploadWorkflowModal
         visible={uploadModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setUploadModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalHeaderTitle}>Upload Health Record</Text>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => setUploadModalVisible(false)}
-                style={styles.modalCloseBtn}
-              >
-                <Ionicons name="close" size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.uploadModalDescription}>
-              Upload verified prescriptions, pathology laboratory tests, or hospital discharge summaries to your secure health vault.
-            </Text>
-
-            <View style={styles.uploadOptionsList}>
-              {[
-                {
-                  title: 'Doctor Prescription',
-                  subtitle: 'e-Rx slip, outpatient paper prescription',
-                  icon: 'receipt-outline',
-                  type: 'prescription',
-                },
-                {
-                  title: 'Laboratory / Pathology Report',
-                  subtitle: 'Blood tests (CBC, LFT, KFT), urine test reports',
-                  icon: 'flask-outline',
-                  type: 'laboratory_report',
-                },
-                {
-                  title: 'Hospital Discharge Summary',
-                  subtitle: 'Inpatient discharge notes and treatment summary',
-                  icon: 'clipboard-outline',
-                  type: 'discharge_summary',
-                },
-                {
-                  title: 'Diagnostic Imaging / Radiology',
-                  subtitle: 'X-Ray, MRI, CT Scan, Ultrasound reports',
-                  icon: 'scan-outline',
-                  type: 'imaging',
-                },
-              ].map((item, index) => (
-                <TouchableOpacity
-                  key={index}
-                  activeOpacity={0.75}
-                  onPress={() => handleSelectDocument(item.type)}
-                  style={styles.uploadOptionItem}
-                >
-                  <View style={styles.uploadOptionIconCircle}>
-                    <Ionicons name={item.icon as any} size={22} color={colors.primary} />
-                  </View>
-                  <View style={styles.uploadOptionTextCol}>
-                    <Text style={styles.uploadOptionTitle}>{item.title}</Text>
-                    <Text style={styles.uploadOptionSubtitle}>{item.subtitle}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Button
-              title="Close"
-              variant="secondary"
-              onPress={() => setUploadModalVisible(false)}
-              style={styles.modalDoneBtn}
-            />
-          </View>
-        </View>
-      </Modal>
-
-      {/* Uploading / AI Extraction Spinner Modal */}
-      <Modal visible={isUploading} transparent animationType="fade">
-        <View style={styles.uploadingOverlay}>
-          <View style={styles.uploadingCard}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.uploadingTitle}>Analyzing with AI</Text>
-            <Text style={styles.uploadingSubtitle}>{uploadProgressText}</Text>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setUploadModalVisible(false)}
+        onUploadSuccess={handleUploadSuccess}
+      />
 
       {/* D. Link Records Info Modal */}
       <Modal
@@ -1305,6 +1233,21 @@ export const RecordsScreen: React.FC = () => {
             >
               <Ionicons name="share-social-outline" size={20} color={colors.primary} />
               <Text style={styles.optionsText}>Share with Doctor</Text>
+            </TouchableOpacity>
+
+            <View style={styles.optionsDivider} />
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                if (selectedRecord) {
+                  handleDeleteRecord(selectedRecord);
+                }
+              }}
+              style={[styles.optionsRow, styles.optionsDeleteRow]}
+            >
+              <Ionicons name="trash-outline" size={20} color="#DC2626" />
+              <Text style={[styles.optionsText, styles.optionsDeleteText]}>Delete Record</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1725,6 +1668,37 @@ const styles = StyleSheet.create({
   modalCloseBtn: {
     padding: spacing.xs,
   },
+  detailTabBar: {
+    flexDirection: 'row',
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: 14,
+    padding: 3,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  detailTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 11,
+    gap: 6,
+  },
+  detailTabBtnActive: {
+    backgroundColor: colors.primary,
+    ...shadows.soft,
+  },
+  detailTabBtnText: {
+    fontSize: typography.fontSize.xs + 1,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.textSecondary,
+  },
+  detailTabBtnTextActive: {
+    color: '#FFFFFF',
+    fontWeight: typography.fontWeight.bold,
+  },
   modalBodyScroll: {
     marginBottom: spacing.md,
   },
@@ -2099,6 +2073,18 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.medium,
     color: colors.textPrimary,
+  },
+  optionsDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: spacing.xs,
+  },
+  optionsDeleteRow: {
+    backgroundColor: '#FEF2F2',
+  },
+  optionsDeleteText: {
+    color: '#DC2626',
+    fontWeight: typography.fontWeight.semiBold,
   },
 
   // Uploading / Processing Overlay Modal

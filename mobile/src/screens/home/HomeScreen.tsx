@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   ScreenContainer,
@@ -54,7 +54,11 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       <GlassCard tint="mint" style={styles.digitalHealthCard}>
         <View style={styles.cardHeaderRow}>
           <View style={styles.cardBrandRow}>
-            <Ionicons name="card" size={20} color={colors.primary} />
+            <Image
+              source={require('../../../assets/logo-mark.png')}
+              style={{ width: 22, height: 22, marginRight: 8 }}
+              resizeMode="contain"
+            />
             <Text style={styles.cardBrandTitle}>Digital Health Card</Text>
           </View>
           <Badge label="ABDM Active" variant="mint" size="sm" />
