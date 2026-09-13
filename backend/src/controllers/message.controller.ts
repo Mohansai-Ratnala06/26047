@@ -115,11 +115,23 @@ export const sendMessage = async (req: Request, res: Response) => {
 
     // 5. OUTBOUND NMT TRANSLATION (Brain -> Patient's Language / future TTS):
     // Fallback default message in case turnResponse.conversation_message is null or empty
+    const missingList = turnResponse.missing_information || [];
+    let dynamicFallback = 'Could you share a few more details about your symptoms to help with your clinical assessment?';
+    if (missingList.includes('location')) {
+      dynamicFallback = 'Could you tell me where in your body you are feeling this discomfort?';
+    } else if (missingList.includes('duration')) {
+      dynamicFallback = 'When did these symptoms start, or how long have you been experiencing them?';
+    } else if (missingList.includes('severity')) {
+      dynamicFallback = 'How severe is the discomfort — would you describe it as mild, moderate, or severe?';
+    } else if (missingList.includes('nature_of_pain')) {
+      dynamicFallback = 'Could you describe what the sensation or pain feels like (e.g. burning, sharp, or dull)?';
+    }
+
     const defaultClinicalMessage = turnResponse.immediate_attention_required || turnResponse.status === 'emergency'
       ? 'EMERGENCY WARNING: Your reported symptoms indicate a potential medical emergency requiring immediate clinical attention. Please seek emergency medical care immediately.'
       : turnResponse.information_complete || turnResponse.status === 'complete'
       ? 'Thank you. Your clinical intake and assessment are complete. Please review your clinical assessment summary.'
-      : 'Could you please describe your symptoms or how long you have been experiencing this in more detail?';
+      : dynamicFallback;
 
     const rawBrainMessage = (turnResponse.conversation_message && turnResponse.conversation_message.trim())
       ? turnResponse.conversation_message.trim()

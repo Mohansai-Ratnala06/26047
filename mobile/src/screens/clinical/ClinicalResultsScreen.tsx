@@ -21,6 +21,7 @@ export const ClinicalResultsScreen: React.FC = () => {
   const clinicalOutput = route.params?.clinicalOutput || {};
 
   const [activeTab, setActiveTab] = useState<'summary' | 'questions' | 'pathway' | 'remedies' | 'dashavidha'>('summary');
+  const [showRawNarrative, setShowRawNarrative] = useState(false);
 
   // Extract structured fields from clinicalOutput
   const safetyFindings = clinicalOutput.safety_findings || {};
@@ -40,6 +41,49 @@ export const ClinicalResultsScreen: React.FC = () => {
   const narrative: string = clinicalSummary.summary_narrative || '';
   const completeness: string = clinicalSummary.data_completeness || 'complete';
   const conflicts: string[] = clinicalSummary.conflicts_identified || [];
+
+  // Structured HPI & Intake Elements for clear visual presentation
+  const intakeSummary = clinicalOutput.intake_summary || {};
+  const hpiSection = clinicalSummary.history_of_present_illness || {};
+  const hpiStructured = hpiSection.structured_data || {};
+  const ccSection = clinicalSummary.chief_complaint || {};
+  const ccStructured = ccSection.structured_data || {};
+
+  const chiefComplaint =
+    ccStructured.chief_complaint ||
+    intakeSummary.chief_complaint ||
+    'Clinical Consultation';
+
+  const severity =
+    hpiStructured.severity ||
+    intakeSummary.severity ||
+    null;
+
+  const duration =
+    hpiStructured.duration ||
+    intakeSummary.duration ||
+    null;
+
+  const location =
+    hpiStructured.location ||
+    intakeSummary.location ||
+    null;
+
+  const natureOfPain =
+    hpiStructured.nature_of_pain ||
+    intakeSummary.nature_of_pain ||
+    null;
+
+  const associatedSymptoms: string[] = Array.isArray(hpiStructured.associated_symptoms)
+    ? hpiStructured.associated_symptoms
+    : Array.isArray(intakeSummary.associated_symptoms)
+    ? intakeSummary.associated_symptoms
+    : [];
+
+  const pastMedicalConditions: string[] = clinicalSummary.past_medical_history?.structured_data?.medical_conditions || [];
+  const pastSurgeries: string[] = clinicalSummary.past_surgical_history?.structured_data?.surgical_history || [];
+  const medicationsList: any[] = clinicalSummary.medication_history?.structured_data?.medications || [];
+  const allergiesList: string[] = clinicalSummary.allergy_history?.structured_data?.allergies || [];
 
   const consultationQuestionsObj = clinicalOutput.consultation_questions || {};
   const questions: any[] = consultationQuestionsObj.questions || [];
@@ -215,7 +259,7 @@ export const ClinicalResultsScreen: React.FC = () => {
           <View style={styles.signalsBox}>
             <Text style={styles.signalsTitle}>Identified Risk Signals:</Text>
             {riskSignals.map((sig, idx) => (
-              <Text key={idx} style={styles.signalText}>• {sig}</Text>
+              <Text key={idx} style={styles.signalText}>• {formatPathway(sig)}</Text>
             ))}
           </View>
         ) : null}
@@ -271,14 +315,15 @@ export const ClinicalResultsScreen: React.FC = () => {
         </View>
       </ScrollView>
 
-      {/* TAB 1: CLINICAL SUMMARY NARRATIVE */}
+      {/* TAB 1: CLINICAL SUMMARY NARRATIVE & STRUCTURED CARDS */}
       {activeTab === 'summary' ? (
         <View style={styles.tabContent}>
-          <Card variant="default" style={styles.sectionCard}>
+          {/* Card 1: Primary Chief Complaint & Key Intake Metrics */}
+          <Card variant="mintWash" style={styles.sectionCard}>
             <View style={styles.cardHeaderRow}>
               <View style={styles.iconTagRow}>
-                <Ionicons name="document-text-outline" size={18} color={colors.primary} />
-                <Text style={styles.cardSectionTitle}>Physician-Ready Narrative</Text>
+                <Ionicons name="pulse-outline" size={20} color={colors.primary} />
+                <Text style={styles.cardSectionTitle}>Primary Presenting Complaint</Text>
               </View>
               <Badge
                 label={`Completeness: ${completeness}`}
@@ -287,9 +332,143 @@ export const ClinicalResultsScreen: React.FC = () => {
               />
             </View>
 
-            <Text style={styles.narrativeText}>
-              {narrative || 'Structured narrative summary not generated.'}
-            </Text>
+            <Text style={styles.chiefComplaintTitle}>{chiefComplaint}</Text>
+
+            <View style={styles.pillRow}>
+              {severity ? (
+                <Badge
+                  label={`Severity: ${severity.toUpperCase()}`}
+                  variant={severity.toLowerCase() === 'severe' ? 'error' : severity.toLowerCase() === 'moderate' ? 'warning' : 'success'}
+                  size="sm"
+                />
+              ) : null}
+              {duration ? (
+                <Badge
+                  label={`Duration: ${duration}`}
+                  variant="mint"
+                  size="sm"
+                />
+              ) : null}
+              {natureOfPain ? (
+                <Badge
+                  label={`Character: ${natureOfPain}`}
+                  variant="neutral"
+                  size="sm"
+                />
+              ) : null}
+              {location ? (
+                <Badge
+                  label={`Location: ${location}`}
+                  variant="neutral"
+                  size="sm"
+                />
+              ) : null}
+            </View>
+          </Card>
+
+          {/* Card 2: History of Present Illness (HPI) Structured Breakdown */}
+          <Card variant="default" style={styles.sectionCard}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.iconTagRow}>
+                <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+                <Text style={styles.cardSectionTitle}>History of Present Illness (HPI)</Text>
+              </View>
+            </View>
+
+            <View style={styles.hpiTable}>
+              <View style={styles.hpiRow}>
+                <Text style={styles.hpiLabel}>Character / Quality</Text>
+                <Text style={styles.hpiValue}>{natureOfPain || 'Not specified'}</Text>
+              </View>
+              <View style={styles.hpiRow}>
+                <Text style={styles.hpiLabel}>Anatomical Location</Text>
+                <Text style={styles.hpiValue}>{location || 'Not localized'}</Text>
+              </View>
+              <View style={styles.hpiRow}>
+                <Text style={styles.hpiLabel}>Onset & Duration</Text>
+                <Text style={styles.hpiValue}>{duration || 'Not reported'}</Text>
+              </View>
+              <View style={styles.hpiRow}>
+                <Text style={styles.hpiLabel}>Reported Severity</Text>
+                <Text style={styles.hpiValue}>{severity ? severity.charAt(0).toUpperCase() + severity.slice(1) : 'Not rated'}</Text>
+              </View>
+              <View style={[styles.hpiRow, { borderBottomWidth: 0 }]}>
+                <Text style={styles.hpiLabel}>Associated Symptoms</Text>
+                <Text style={styles.hpiValue}>
+                  {associatedSymptoms.length > 0 ? associatedSymptoms.join(', ') : 'None reported'}
+                </Text>
+              </View>
+            </View>
+          </Card>
+
+          {/* Card 3: Baseline Patient Profile */}
+          <Card variant="subtle" style={styles.sectionCard}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.iconTagRow}>
+                <Ionicons name="person-circle-outline" size={18} color={colors.primary} />
+                <Text style={styles.cardSectionTitle}>Baseline Medical History</Text>
+              </View>
+            </View>
+
+            <View style={styles.historyList}>
+              <View style={styles.historyItem}>
+                <Text style={styles.historyItemLabel}>Chronic Conditions:</Text>
+                <Text style={styles.historyItemVal}>
+                  {pastMedicalConditions.length > 0 ? pastMedicalConditions.join(', ') : 'None documented'}
+                </Text>
+              </View>
+              <View style={styles.historyItem}>
+                <Text style={styles.historyItemLabel}>Surgical History:</Text>
+                <Text style={styles.historyItemVal}>
+                  {pastSurgeries.length > 0 ? pastSurgeries.join(', ') : 'None documented'}
+                </Text>
+              </View>
+              <View style={styles.historyItem}>
+                <Text style={styles.historyItemLabel}>Current Medications:</Text>
+                <Text style={styles.historyItemVal}>
+                  {medicationsList.length > 0
+                    ? (typeof medicationsList[0] === 'string' ? medicationsList.join(', ') : medicationsList.map((m: any) => m.name || m).join(', '))
+                    : 'None documented'}
+                </Text>
+              </View>
+              <View style={styles.historyItem}>
+                <Text style={styles.historyItemLabel}>Allergies:</Text>
+                <Text style={styles.historyItemVal}>
+                  {allergiesList.length > 0 ? allergiesList.join(', ') : 'No known drug allergies reported'}
+                </Text>
+              </View>
+            </View>
+          </Card>
+
+          {/* Card 4: Collapsible Physician Narrative View */}
+          <Card variant="default" style={styles.sectionCard}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setShowRawNarrative(!showRawNarrative)}
+              style={styles.cardHeaderRow}
+            >
+              <View style={styles.iconTagRow}>
+                <Ionicons name="clipboard-outline" size={18} color={colors.primary} />
+                <Text style={styles.cardSectionTitle}>Full Physician Narrative</Text>
+              </View>
+              <Ionicons
+                name={showRawNarrative ? 'chevron-up-outline' : 'chevron-down-outline'}
+                size={18}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+
+            {showRawNarrative ? (
+              <View style={styles.narrativeContainer}>
+                <Text style={styles.narrativeCleanText}>
+                  {narrative || 'Structured narrative summary not generated.'}
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.narrativeCollapsedHint}>
+                Tap to expand full physician narrative & systemic review.
+              </Text>
+            )}
 
             {conflicts.length > 0 ? (
               <View style={styles.conflictsBox}>
@@ -794,14 +973,81 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
   },
-  narrativeText: {
+  chiefComplaintTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryDark,
+    marginVertical: spacing.xs,
+  },
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  hpiTable: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  hpiRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.xs + 2,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(10, 77, 82, 0.08)',
+  },
+  hpiLabel: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  hpiValue: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.textPrimary,
+    flex: 1.5,
+    textAlign: 'right',
+  },
+  historyList: {
+    gap: spacing.xs,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  historyItemLabel: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeight.medium,
+  },
+  historyItemVal: {
     fontSize: typography.fontSize.xs,
     color: colors.textPrimary,
-    lineHeight: typography.lineHeight.xs + 4,
-    fontFamily: 'monospace',
+    fontWeight: typography.fontWeight.semiBold,
+    maxWidth: '60%',
+    textAlign: 'right',
+  },
+  narrativeContainer: {
+    marginTop: spacing.xs,
+  },
+  narrativeCleanText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textPrimary,
+    lineHeight: typography.lineHeight.xs + 5,
     backgroundColor: colors.surfaceSubtle,
     padding: spacing.sm,
     borderRadius: borderRadius.sm,
+  },
+  narrativeCollapsedHint: {
+    fontSize: typography.fontSize.xs - 1,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    marginTop: spacing.xs,
   },
   conflictsBox: {
     marginTop: spacing.md,
