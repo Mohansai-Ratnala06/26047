@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import Message from '../models/Message';
 import Conversation from '../models/Conversation';
+import Episode from '../models/Episode';
 import Patient from '../models/Patient';
 import { ApiResponse } from '../types';
 import clinicalBrainService, { NormalizedClinicalInputDTO } from '../services/clinicalBrain.service';
@@ -204,6 +205,36 @@ export const sendMessage = async (req: Request, res: Response) => {
       conversation.completedAt = new Date();
     }
     await conversation.save();
+
+    // Auto-update Episode chiefComplaint if currently generic placeholder
+    if (conversation.episodeId) {
+      const snapComplaint =
+        turnResponse.updated_state?.chief_complaint ||
+        turnResponse.clinical_output?.clinical_case?.chief_complaint ||
+        turnResponse.clinical_output?.clinical_summary?.primary_concern;
+      if (
+        typeof snapComplaint === 'string' &&
+        snapComplaint.trim().length > 1 &&
+        !snapComplaint.toLowerCase().includes('fetch whatever records') &&
+        !snapComplaint.toLowerCase().includes('voice consultation')
+      ) {
+        const formatted = snapComplaint.trim().charAt(0).toUpperCase() + snapComplaint.trim().slice(1);
+        Episode.findById(conversation.episodeId)
+          .then((ep) => {
+            if (
+              ep &&
+              (!ep.chiefComplaint ||
+                ep.chiefComplaint.toLowerCase().includes('voice consultation') ||
+                ep.chiefComplaint.toLowerCase().includes('ai triage') ||
+                ep.chiefComplaint.trim() === 'symptom')
+            ) {
+              ep.chiefComplaint = formatted;
+              ep.save().catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
+    }
 
     // 8. Return response to mobile client with translated content, english original, metadata, and speech audio
     const response: ApiResponse = {

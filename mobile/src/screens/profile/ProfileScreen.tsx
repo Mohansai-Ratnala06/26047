@@ -9,6 +9,7 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -246,6 +247,17 @@ export const ProfileScreen: React.FC = () => {
         style={styles.logoutBtn}
         accessibilityLabel="Sign out of your account"
       />
+
+      {/* App Branding Footer */}
+      <View style={styles.appBrandingFooter}>
+        <Image
+          source={require('../../../assets/logo.png')}
+          style={styles.brandingLogo}
+          resizeMode="contain"
+        />
+        <Text style={styles.brandingVersion}>Vaidyaarc v1.0.0</Text>
+        <Text style={styles.brandingMotto}>Intelligent Healthcare Ecosystem</Text>
+      </View>
 
       {/* ========================================================== */}
       {/* 1. HEALTH PROFILE MODAL */}
@@ -995,6 +1007,27 @@ const styles = StyleSheet.create({
   },
   sessionMeta: {
     fontSize: typography.fontSize.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  appBrandingFooter: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+    marginTop: spacing.md,
+  },
+  brandingLogo: {
+    width: 140,
+    height: 90,
+    marginBottom: spacing.xs,
+  },
+  brandingVersion: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+  },
+  brandingMotto: {
+    fontSize: typography.fontSize.xs - 1,
     color: colors.textMuted,
     marginTop: 2,
   },

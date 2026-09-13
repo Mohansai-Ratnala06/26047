@@ -70,6 +70,13 @@ export const conversationApi = {
   },
 
   /**
+   * Get conversations for a specific episode.
+   */
+  getConversationsByEpisode: async (episodeId: string): Promise<ApiResponse<ConversationDoc[]>> => {
+    return apiClient.get(`/conversations/episode/${episodeId}`);
+  },
+
+  /**
    * Send a patient message to the conversation endpoint, which invokes the Python Clinical Brain.
    */
   sendMessage: async (

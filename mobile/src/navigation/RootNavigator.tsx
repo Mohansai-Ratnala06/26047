@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, ActivityIndicator, Image, Text } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuthStore } from '../store/authStore';
@@ -7,7 +7,9 @@ import { AuthNavigator } from './AuthNavigator';
 import { MainTabNavigator } from './MainTabNavigator';
 import { OnboardingScreen } from '../screens/onboarding/OnboardingScreen';
 import { RootStackParamList } from './types';
-import { colors } from '../theme';
+import { colors, spacing, typography } from '../theme';
+import { DoctorTabNavigator } from './DoctorTabNavigator';
+import { ClinicalResultsScreen } from '../screens/clinical';
 
 const AppTheme = {
   ...DefaultTheme,
@@ -24,20 +26,28 @@ const AppTheme = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-import { DoctorTabNavigator } from './DoctorTabNavigator';
-import { ClinicalResultsScreen } from '../screens/clinical';
-
 export const RootNavigator: React.FC = () => {
   const { isAuthenticated, isCheckingSession, startupCheck, user } = useAuthStore();
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
     startupCheck();
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 1500);
+    return () => clearTimeout(timer);
   }, []);
 
-  if (isCheckingSession) {
+  if (isCheckingSession || showSplash) {
     return (
       <View style={styles.splashContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <Image
+          source={require('../../assets/logo.png')}
+          style={styles.splashLogo}
+          resizeMode="contain"
+        />
+        <ActivityIndicator size="small" color={colors.primary} style={styles.splashLoader} />
+        <Text style={styles.splashTagline}>Intelligent Healthcare Ecosystem</Text>
       </View>
     );
   }
@@ -70,8 +80,23 @@ export const RootNavigator: React.FC = () => {
 const styles = StyleSheet.create({
   splashContainer: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  splashLogo: {
+    width: 240,
+    height: 190,
+    marginBottom: spacing.lg,
+  },
+  splashLoader: {
+    marginBottom: spacing.md,
+  },
+  splashTagline: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeight.medium,
+    letterSpacing: 0.3,
   },
 });
