@@ -15,7 +15,7 @@ export const createConversation = async (req: Request, res: Response) => {
       return res.status(404).json(response);
     }
 
-    const { episodeId, channel, language } = req.body;
+    const { episodeId, channel, language, forceNew } = req.body;
 
     // Verify episode belongs to patient
     const episode = await Episode.findOne({ _id: episodeId, patientId });
@@ -24,15 +24,34 @@ export const createConversation = async (req: Request, res: Response) => {
       return res.status(404).json(response);
     }
 
-    const conversation = new Conversation({
-      patientId,
-      episodeId,
-      channel: channel || 'text',
-      language: language || 'en',
-      status: 'active',
-      startedAt: new Date(),
-    });
-    await conversation.save();
+    // 1. Check if there is already an active conversation for this episode & patient
+    let conversation = await Conversation.findOne({ episodeId, patientId, status: 'active' }).sort({ createdAt: -1 });
+    
+    // 2. If no active conversation exists and not explicitly forcing new, reuse & reactivate the episode's existing conversation
+    if (!conversation && !forceNew) {
+      conversation = await Conversation.findOne({ episodeId, patientId }).sort({ createdAt: -1 });
+      if (conversation) {
+        conversation.status = 'active';
+        await conversation.save();
+      }
+    }
+
+    // 3. Otherwise instantiate a fresh conversation linked to this episode & patient
+    if (!conversation) {
+      const previousConv = await Conversation.findOne({ patientId }).sort({ createdAt: -1 });
+
+      conversation = new Conversation({
+        patientId,
+        episodeId,
+        channel: channel || 'text',
+        language: language || 'en',
+        status: 'active',
+        startedAt: new Date(),
+        stateSnapshot: previousConv?.stateSnapshot || undefined,
+        clinicalStatus: previousConv?.clinicalStatus || undefined,
+      });
+      await conversation.save();
+    }
 
     const response: ApiResponse = { success: true, data: conversation };
     res.status(201).json(response);

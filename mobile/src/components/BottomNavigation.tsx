@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, shadows, typography } from '../theme';
 
+import { useTranslation } from '../i18n';
+
 export interface BottomNavigationProps {
   state: any;
   descriptors: any;
@@ -14,6 +16,8 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   descriptors,
   navigation,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <View style={styles.wrapper}>
       <View style={styles.bar}>
@@ -45,7 +49,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                     isFocused ? styles.voiceButtonActive : null,
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel="VaidyaAI Voice Assistant"
+                  accessibilityLabel={t('navigation.voiceAssistant')}
                 >
                   <Ionicons name="mic" size={26} color="#FFFFFF" />
                 </TouchableOpacity>
@@ -54,20 +58,20 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
           }
 
           let iconName: any = 'home';
-          let label = 'Home';
+          let label = t('navigation.home');
 
           if (route.name === 'Home') {
             iconName = isFocused ? 'home' : 'home-outline';
-            label = 'Home';
+            label = t('navigation.home');
           } else if (route.name === 'Records') {
             iconName = isFocused ? 'folder' : 'folder-outline';
-            label = 'Records';
+            label = t('navigation.records');
           } else if (route.name === 'Consultation') {
             iconName = isFocused ? 'shield-checkmark' : 'shield-checkmark-outline';
-            label = isFocused ? 'My Consents' : 'Consents';
+            label = isFocused ? t('navigation.myConsents') : t('navigation.consents');
           } else if (route.name === 'Profile') {
             iconName = isFocused ? 'person' : 'person-outline';
-            label = 'Profile';
+            label = t('navigation.profile');
           }
 
           return (

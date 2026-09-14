@@ -76,6 +76,22 @@ export const sendMessage = async (req: Request, res: Response) => {
 
     // 3. Construct NormalizedClinicalInputDTO for Clinical Brain
     const patientDoc = await Patient.findById(patientId);
+
+    // Retrieve recent conversation messages for this episode & patient to provide multi-turn context
+    const previousMessages = await Message.find({
+      episodeId: conversation.episodeId,
+      patientId,
+      _id: { $ne: patientMessage._id },
+    })
+      .sort({ timestamp: -1 })
+      .limit(10);
+
+    const formattedHistory = previousMessages.reverse().map((m) => ({
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp,
+    }));
+
     const clinicalInput: NormalizedClinicalInputDTO = {
       patient_id: patientId.toString(),
       episode_id: conversation.episodeId ? conversation.episodeId.toString() : conversationId,
@@ -98,6 +114,7 @@ export const sendMessage = async (req: Request, res: Response) => {
         family_history: [],
       },
       state_snapshot: conversation.stateSnapshot || null,
+      previous_conversations: formattedHistory,
     };
 
     // 4. Invoke Clinical Brain (processes clinical reasoning in English)
@@ -138,9 +155,13 @@ export const sendMessage = async (req: Request, res: Response) => {
       ? turnResponse.conversation_message.trim()
       : defaultClinicalMessage;
 
-    // Translate Brain's clinical English response back into the patient's native language
+    // Translate Brain's response back into patient's language only if it was returned in English
     let nativeAssistantContent = rawBrainMessage;
-    if (rawBrainMessage && patientLanguage && !patientLanguage.toLowerCase().startsWith('en')) {
+    const isIndicLanguage = !patientLanguage.toLowerCase().startsWith('en');
+    // Check if the text already contains Telugu, Devanagari, Tamil, Kannada, Malayalam, or Bengali script
+    const hasIndicScript = /[\u0900-\u0D7F]/.test(rawBrainMessage);
+
+    if (rawBrainMessage && isIndicLanguage && !hasIndicScript) {
       try {
         nativeAssistantContent = await nmtService.translateFromEnglish(rawBrainMessage, patientLanguage);
         console.info(`[NMT Outbound] Translated Brain response (en) -> (${patientLanguage}): "${nativeAssistantContent}"`);
@@ -148,6 +169,8 @@ export const sendMessage = async (req: Request, res: Response) => {
         console.warn('[NMT Outbound] Translation failed, proceeding with English response:', nmtOutErr.message);
         nativeAssistantContent = rawBrainMessage;
       }
+    } else if (hasIndicScript) {
+      console.info(`[Brain Response] Brain already formulated native response in ${patientLanguage}, skipping redundant NMT.`);
     }
 
     // Safety guard: ensure content is never empty or whitespace
@@ -200,40 +223,153 @@ export const sendMessage = async (req: Request, res: Response) => {
     if (turnResponse.clinical_output) {
       conversation.clinicalOutput = turnResponse.clinical_output;
     }
-    if (turnResponse.information_complete || turnResponse.immediate_attention_required) {
-      conversation.status = 'completed';
-      conversation.completedAt = new Date();
-    }
+    // Keep conversation status active for ongoing patient-companion interaction.
+    // Do NOT mark completed prematurely — patient can ask follow-ups, remedy questions, or clarification.
+    conversation.status = 'active';
     await conversation.save();
 
-    // Auto-update Episode chiefComplaint if currently generic placeholder
+    // Check if patient confirmed starting a new concurrent episode for an unrelated problem
+    let activeEpisodeId = conversation.episodeId;
+    let activeConversationId = conversation._id;
+    let switchedToNewEpisode = false;
+
+    if (turnResponse.confirm_start_new_episode && turnResponse.detected_new_complaint) {
+      try {
+        const { generateCode } = await import('../utils/codeGenerator');
+        const newEpCode = await generateCode('EP');
+        const newEpisode = new Episode({
+          patientId,
+          episodeCode: newEpCode,
+          type: 'symptom',
+          chiefComplaint: turnResponse.detected_new_complaint,
+          symptoms: [{ name: turnResponse.detected_new_complaint }],
+          status: 'open',
+          patientConsent: {
+            consented: true,
+            consentedAt: new Date(),
+            scope: 'clinical_intake_and_triage',
+            version: '1.0',
+          },
+          startedAt: new Date(),
+        });
+        await newEpisode.save();
+
+        const newConversation = new Conversation({
+          patientId,
+          episodeId: newEpisode._id,
+          channel: conversation.channel || 'voice',
+          language: patientLanguage,
+          status: 'active',
+          startedAt: new Date(),
+        });
+        await newConversation.save();
+
+        activeEpisodeId = newEpisode._id;
+        activeConversationId = newConversation._id;
+        switchedToNewEpisode = true;
+
+        assistantMessage.episodeId = newEpisode._id;
+        assistantMessage.conversationId = newConversation._id;
+        await assistantMessage.save();
+        console.info(`[MessageController] Patient confirmed new problem -> Spawned concurrent episode ${newEpCode} (${turnResponse.detected_new_complaint}) while preserving previous episode.`);
+      } catch (newEpErr: any) {
+        console.warn('[MessageController] Failed to spawn concurrent episode:', newEpErr.message);
+      }
+    }
+
+    // Auto-update Episode chiefComplaint, triage, and Pre-Consultation Notes
     if (conversation.episodeId) {
       const snapComplaint =
         turnResponse.updated_state?.chief_complaint ||
         turnResponse.clinical_output?.clinical_case?.chief_complaint ||
         turnResponse.clinical_output?.clinical_summary?.primary_concern;
-      if (
-        typeof snapComplaint === 'string' &&
-        snapComplaint.trim().length > 1 &&
-        !snapComplaint.toLowerCase().includes('fetch whatever records') &&
-        !snapComplaint.toLowerCase().includes('voice consultation')
-      ) {
-        const formatted = snapComplaint.trim().charAt(0).toUpperCase() + snapComplaint.trim().slice(1);
-        Episode.findById(conversation.episodeId)
-          .then((ep) => {
+      
+      const preConsult = turnResponse.clinical_output?.pre_consultation_report;
+      const severityScore = turnResponse.clinical_output?.severity_score;
+
+      Episode.findById(conversation.episodeId)
+        .then((ep) => {
+          if (!ep) return;
+          let hasChanges = false;
+
+          // Update chiefComplaint if valid
+          if (
+            typeof snapComplaint === 'string' &&
+            snapComplaint.trim().length > 1 &&
+            !snapComplaint.toLowerCase().includes('fetch whatever records') &&
+            !snapComplaint.toLowerCase().includes('voice consultation')
+          ) {
+            const formatted = snapComplaint.trim().charAt(0).toUpperCase() + snapComplaint.trim().slice(1);
             if (
-              ep &&
-              (!ep.chiefComplaint ||
-                ep.chiefComplaint.toLowerCase().includes('voice consultation') ||
-                ep.chiefComplaint.toLowerCase().includes('ai triage') ||
-                ep.chiefComplaint.trim() === 'symptom')
+              !ep.chiefComplaint ||
+              ep.chiefComplaint.toLowerCase().includes('voice consultation') ||
+              ep.chiefComplaint.toLowerCase().includes('ai triage') ||
+              ep.chiefComplaint.trim() === 'symptom'
             ) {
               ep.chiefComplaint = formatted;
-              ep.save().catch(() => {});
+              hasChanges = true;
             }
-          })
-          .catch(() => {});
-      }
+          }
+
+          // Update clinical triage level based on severity
+          if (severityScore != null) {
+            const level =
+              turnResponse.immediate_attention_required || severityScore >= 80
+                ? 'urgent'
+                : severityScore >= 60
+                ? 'high'
+                : severityScore >= 35
+                ? 'moderate'
+                : 'low';
+            ep.triage = {
+              level,
+              redFlags: turnResponse.red_flags || [],
+              evaluatedAt: new Date(),
+            };
+            if (level === 'urgent' || level === 'high') {
+              ep.status = 'escalated';
+            }
+            hasChanges = true;
+          }
+
+          // Store complete structured clinical assessment report directly on Episode
+          if (turnResponse.clinical_output) {
+            ep.clinicalOutput = turnResponse.clinical_output;
+            hasChanges = true;
+          }
+
+          // Sync remedies tracked with relief outcomes
+          const remediesOffered = turnResponse.updated_state?.remediesOffered;
+          if (Array.isArray(remediesOffered) && remediesOffered.length > 0) {
+            ep.remediesTracked = remediesOffered.map((r: any) => ({
+              remedyName: r.remedy,
+              recordId: r.recordId,
+              status: r.status || 'suggested',
+              reliefReported: r.reliefReported || 'pending',
+              patientFeedback: r.patientFeedback,
+              lastReportedAt: r.offeredAt ? new Date(r.offeredAt) : new Date(),
+            }));
+            hasChanges = true;
+          }
+
+          // Store structured pre-consultation report into clinicalNotes
+          if (preConsult && preConsult.doctorSummarySOAP) {
+            ep.clinicalNotes = `[PRE-CONSULTATION SUMMARY - ${preConsult.recommendedSpecialty || 'General Medicine'}]
+Severity: ${preConsult.severityScore}/100 | Generated: ${preConsult.generatedAt}
+HPI: ${preConsult.hpiSummary}
+SOAP Subjective: ${preConsult.doctorSummarySOAP.subjective}
+SOAP Objective: ${preConsult.doctorSummarySOAP.objective}
+SOAP Assessment: ${preConsult.doctorSummarySOAP.assessment}
+SOAP Plan: ${preConsult.doctorSummarySOAP.plan}
+Remedies Attempted: ${preConsult.remediesTried?.join(', ') || 'None'}`;
+            hasChanges = true;
+          }
+
+          if (hasChanges) {
+            ep.save().catch(() => {});
+          }
+        })
+        .catch(() => {});
     }
 
     // 8. Return response to mobile client with translated content, english original, metadata, and speech audio
@@ -250,6 +386,11 @@ export const sendMessage = async (req: Request, res: Response) => {
         clinicalOutput: turnResponse.clinical_output || null,
         audioBase64,
         audioMimeType,
+        activeEpisodeId,
+        activeConversationId,
+        switchedToNewEpisode,
+        detectedNewComplaint: turnResponse.detected_new_complaint || null,
+        unrelatedProblemDetected: turnResponse.unrelated_problem_detected || false,
       },
     };
     res.status(201).json(response);
@@ -307,3 +448,57 @@ export const getMessages = async (req: Request, res: Response) => {
     res.status(500).json(response);
   }
 };
+
+/**
+ * Retrieve all messages for an episode belonging to the authenticated patient.
+ * Ensures complete multi-turn history continuity across turns, app relaunches, and rehydrations.
+ */
+export const getMessagesByEpisode = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      const response: ApiResponse = { success: false, message: 'Unauthorized: User not authenticated' };
+      return res.status(401).json(response);
+    }
+
+    const patientId = await resolvePatientId(userId);
+    if (!patientId) {
+      const response: ApiResponse = { success: false, message: 'Patient profile not found' };
+      return res.status(404).json(response);
+    }
+
+    const { episodeId } = req.params;
+
+    // Verify episode belongs to this authenticated patient
+    const episode = await Episode.findOne({ _id: episodeId, patientId });
+    if (!episode) {
+      const response: ApiResponse = { success: false, message: 'Episode not found or unauthorized' };
+      return res.status(404).json(response);
+    }
+
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 200);
+    const before = req.query.before as string;
+
+    const query: Record<string, any> = { episodeId, patientId };
+    if (before) {
+      query.timestamp = { $lt: new Date(before) };
+    }
+
+    const messages = await Message.find(query)
+      .sort({ timestamp: 1 })
+      .limit(limit);
+
+    const response: ApiResponse = {
+      success: true,
+      data: {
+        messages,
+        pagination: { count: messages.length, limit },
+      },
+    };
+    res.status(200).json(response);
+  } catch (error: any) {
+    const response: ApiResponse = { success: false, message: error.message };
+    res.status(500).json(response);
+  }
+};
+

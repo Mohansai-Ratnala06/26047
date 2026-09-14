@@ -22,6 +22,7 @@ import { colors, spacing, typography, borderRadius, shadows } from '../../../the
 import { documentApi } from '../../../api/documentApi';
 import { SmartReportView } from './SmartReportView';
 import { OriginalReportView } from './OriginalReportView';
+import { useTranslation } from '../../../i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -58,6 +59,7 @@ export const DocumentUploadWorkflowModal: React.FC<DocumentUploadWorkflowModalPr
   defaultEpisodeId,
 }) => {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   // Workflow state
   const [step, setStep] = useState<Step>('upload');
@@ -406,7 +408,7 @@ export const DocumentUploadWorkflowModal: React.FC<DocumentUploadWorkflowModalPr
           <TouchableOpacity activeOpacity={0.7} onPress={handleRequestClose} style={styles.headerCloseBtn}>
             <Ionicons name="close" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Upload Health Record</Text>
+          <Text style={styles.headerTitle}>{t('upload.modalTitle')}</Text>
           <View style={{ width: 40 }} />
         </View>
 
@@ -477,9 +479,9 @@ export const DocumentUploadWorkflowModal: React.FC<DocumentUploadWorkflowModalPr
                     style={[styles.categoryCard, isSelected && styles.categoryCardSelected]}
                   >
                     <View style={[styles.categoryIconWrap, isSelected && styles.categoryIconWrapSelected]}>
-                      <Ionicons name={cat.icon} size={20} color={isSelected ? colors.primary : colors.textSecondary} />
+                      <Ionicons name={cat.icon} size={18} color={isSelected ? colors.primary : colors.textSecondary} />
                     </View>
-                    <Text style={[styles.categoryLabel, isSelected && styles.categoryLabelSelected]}>
+                    <Text style={[styles.categoryLabel, isSelected && styles.categoryLabelSelected]} numberOfLines={2}>
                       {cat.label}
                     </Text>
                   </TouchableOpacity>
@@ -488,30 +490,42 @@ export const DocumentUploadWorkflowModal: React.FC<DocumentUploadWorkflowModalPr
             </View>
 
             {/* File Dropzone or Preview */}
-            <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>Document File</Text>
+            <Text style={[styles.sectionTitle, { marginTop: spacing.md }]}>Document File</Text>
 
             {!fileUri ? (
               <View style={styles.dropzoneCard}>
                 <View style={styles.dropzoneIconWrap}>
-                  <Ionicons name="cloud-upload-outline" size={36} color={colors.primary} />
+                  <Ionicons name="cloud-upload-outline" size={32} color={colors.primary} />
                 </View>
                 <Text style={styles.dropzoneTitle}>Choose Medical Document</Text>
                 <Text style={styles.dropzoneSub}>Supported formats: PNG, JPEG, PDF (up to 25MB)</Text>
 
                 <View style={styles.sourceBtnRow}>
                   <TouchableOpacity activeOpacity={0.8} onPress={handlePickCamera} style={styles.sourceBtn}>
-                    <Ionicons name="camera-outline" size={18} color={colors.primary} />
-                    <Text style={styles.sourceBtnText}>Camera</Text>
+                    <View style={styles.sourceBtnIconWrap}>
+                      <Ionicons name="camera-outline" size={20} color={colors.primary} />
+                    </View>
+                    <Text style={styles.sourceBtnText} numberOfLines={2}>
+                      {t('upload.takePhoto')}
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity activeOpacity={0.8} onPress={handlePickGallery} style={styles.sourceBtn}>
-                    <Ionicons name="images-outline" size={18} color={colors.primary} />
-                    <Text style={styles.sourceBtnText}>Gallery</Text>
+                    <View style={styles.sourceBtnIconWrap}>
+                      <Ionicons name="images-outline" size={20} color={colors.primary} />
+                    </View>
+                    <Text style={styles.sourceBtnText} numberOfLines={2}>
+                      {t('upload.chooseGallery')}
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity activeOpacity={0.8} onPress={handlePickFile} style={styles.sourceBtn}>
-                    <Ionicons name="document-outline" size={18} color={colors.primary} />
-                    <Text style={styles.sourceBtnText}>Files</Text>
+                    <View style={styles.sourceBtnIconWrap}>
+                      <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+                    </View>
+                    <Text style={styles.sourceBtnText} numberOfLines={2}>
+                      {t('upload.uploadPdf')}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -633,7 +647,7 @@ export const DocumentUploadWorkflowModal: React.FC<DocumentUploadWorkflowModalPr
                   color={previewTab === 'smart' ? '#FFFFFF' : colors.textSecondary}
                 />
                 <Text style={[styles.tabButtonText, previewTab === 'smart' && styles.tabButtonTextActive]}>
-                  Smart Report
+                  {t('smartReport.smartReportTab')}
                 </Text>
               </TouchableOpacity>
 
@@ -648,7 +662,7 @@ export const DocumentUploadWorkflowModal: React.FC<DocumentUploadWorkflowModalPr
                   color={previewTab === 'original' ? '#FFFFFF' : colors.textSecondary}
                 />
                 <Text style={[styles.tabButtonText, previewTab === 'original' && styles.tabButtonTextActive]}>
-                  Original Report
+                  {t('smartReport.originalDocTab')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -870,38 +884,45 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
+    justifyContent: 'space-between',
   },
   categoryCard: {
+    width: '48.5%',
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: borderRadius.md,
-    padding: spacing.sm + 2,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    minHeight: 52,
   },
   categoryCardSelected: {
     borderColor: colors.primary,
     backgroundColor: '#E6F4F1',
   },
   categoryIconWrap: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: 8,
     backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm,
+    marginRight: spacing.xs + 2,
   },
   categoryIconWrapSelected: {
     backgroundColor: '#FFFFFF',
   },
   categoryLabel: {
-    fontSize: typography.fontSize.sm,
+    fontSize: 12,
     fontWeight: typography.fontWeight.medium,
     color: colors.textSecondary,
     flex: 1,
+    lineHeight: 16,
   },
   categoryLabelSelected: {
     color: colors.primary,
@@ -910,54 +931,69 @@ const styles = StyleSheet.create({
   dropzoneCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: borderRadius.lg,
-    padding: spacing.xl,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: '#CBD5E1',
     borderStyle: 'dashed',
   },
   dropzoneIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: '#E6F4F1',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   dropzoneTitle: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.fontSize.sm + 1,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
   },
   dropzoneSub: {
     fontSize: typography.fontSize.xs,
     color: colors.textMuted,
-    marginTop: 4,
-    marginBottom: spacing.lg,
+    marginTop: 2,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   sourceBtnRow: {
     flexDirection: 'row',
     gap: spacing.sm,
     width: '100%',
+    justifyContent: 'space-between',
   },
   sourceBtn: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
     backgroundColor: '#F8FAFC',
     borderRadius: borderRadius.md,
     paddingVertical: spacing.sm + 2,
+    paddingHorizontal: 4,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    minHeight: 84,
+    overflow: 'hidden',
+  },
+  sourceBtnIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E6F4F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
   },
   sourceBtnText: {
-    fontSize: typography.fontSize.sm,
+    fontSize: 11,
     fontWeight: typography.fontWeight.semiBold,
-    color: colors.primary,
+    color: colors.primaryDark,
+    textAlign: 'center',
+    lineHeight: 14,
   },
   previewCard: {
     backgroundColor: '#FFFFFF',

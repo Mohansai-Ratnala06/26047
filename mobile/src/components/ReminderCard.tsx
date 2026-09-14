@@ -5,11 +5,14 @@ import { colors, spacing, typography } from '../theme';
 import { Card } from './Card';
 import { Badge } from './Badge';
 
+import { useTranslation } from '../i18n';
+
 export interface ReminderCardProps {
   title: string;
   time: string;
   category: string;
   status?: 'pending' | 'completed';
+  statusLabel?: string;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
 }
@@ -19,9 +22,13 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
   time,
   category,
   status = 'pending',
+  statusLabel,
   onPress,
   style,
 }) => {
+  const { t } = useTranslation();
+  const badgeLabel = statusLabel || (status === 'completed' ? t('common.done') : t('common.upcoming'));
+
   return (
     <Card onPress={onPress} style={[styles.card, style]}>
       <View style={styles.row}>
@@ -39,7 +46,7 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
           </Text>
         </View>
         <Badge
-          label={status === 'completed' ? 'Done' : 'Upcoming'}
+          label={badgeLabel}
           variant={status === 'completed' ? 'success' : 'mint'}
           size="sm"
         />

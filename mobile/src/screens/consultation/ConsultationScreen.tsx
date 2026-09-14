@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { consentApi } from '../../api/consentApi';
 import { Button, LoadingState, ErrorState } from '../../components';
+import { useTranslation } from '../../i18n';
 import { colors, spacing, typography, borderRadius, shadows } from '../../theme';
 
 // ==========================================
@@ -539,44 +540,44 @@ const ConsentDetailModal: React.FC<ConsentModalProps> = ({
 
 export const ConsultationScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   // Navigation / Tabs State
   const [primarySegment, setPrimarySegment] = useState<PrimarySegment>('Requests');
   const [requestsSubTab, setRequestsSubTab] = useState<RequestsSubTab>('All');
   const [approvedSubTab, setApprovedSubTab] = useState<ApprovedSubTab>('Granted');
 
-  // Backend Data State
+  // Data State
   const [consents, setConsents] = useState<ConsentRecord[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Modal State
+  // Selected Record & Modal
   const [selectedRecord, setSelectedRecord] = useState<ConsentRecord | null>(null);
-  const [modalVisible, setModalVisible] = useState<boolean>(false);
+  const [modalVisible, setModalVisible] = useState(false);
 
-  // Fetch Consents using existing API
-  const fetchConsents = useCallback(async (isRefresh: boolean = false) => {
+  // Load consents from backend API
+  const fetchConsents = useCallback(async (isPullToRefresh = false) => {
     try {
-      if (isRefresh) {
+      if (isPullToRefresh) {
         setRefreshing(true);
       } else {
         setLoading(true);
       }
       setError(null);
 
-      const res = await consentApi.getConsents();
-      if (res && res.success && Array.isArray(res.data)) {
-        setConsents(res.data);
-      } else if (Array.isArray(res)) {
-        setConsents(res);
-      } else if (res && Array.isArray(res.data?.data)) {
-        setConsents(res.data.data);
-      } else {
-        setConsents([]);
-      }
+      const response = await consentApi.getConsents();
+      const records = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response)
+        ? response
+        : [];
+
+      setConsents(records);
     } catch (err: any) {
-      setError(err?.message || 'Unable to load consents. Please try again.');
+      console.log('Error fetching consents:', err?.message || err);
+      setError('Unable to load electronic consents. Please try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -648,7 +649,7 @@ export const ConsultationScreen: React.FC = () => {
           { paddingTop: Math.max(insets.top, 16) + spacing.xs },
         ]}
       >
-        <Text style={styles.headerTitle}>My Consents</Text>
+        <Text style={styles.headerTitle}>{t('consents.title')}</Text>
       </View>
 
       {/* 2. Primary Segmented Control (Requests | Approved) */}
@@ -670,7 +671,7 @@ export const ConsultationScreen: React.FC = () => {
               primarySegment === 'Requests' && styles.segmentTextActive,
             ]}
           >
-            Requests
+            {t('consents.requestsTab')}
           </Text>
         </TouchableOpacity>
 
@@ -691,7 +692,7 @@ export const ConsultationScreen: React.FC = () => {
               primarySegment === 'Approved' && styles.segmentTextActive,
             ]}
           >
-            Approved
+            {t('consents.approvedTab')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -699,20 +700,25 @@ export const ConsultationScreen: React.FC = () => {
       {/* 3. Secondary Sub-Tabs Row */}
       {primarySegment === 'Requests' ? (
         <View style={styles.subTabRow}>
-          {(['All', 'Pending', 'Denied', 'Expired'] as RequestsSubTab[]).map((tab) => {
-            const isActive = requestsSubTab === tab;
+          {([
+            { id: 'All' as RequestsSubTab, label: t('consents.allSubTab') },
+            { id: 'Pending' as RequestsSubTab, label: t('consents.pendingSubTab') },
+            { id: 'Denied' as RequestsSubTab, label: t('consents.deniedSubTab') },
+            { id: 'Expired' as RequestsSubTab, label: t('consents.expiredSubTab') },
+          ]).map((tab) => {
+            const isActive = requestsSubTab === tab.id;
             return (
               <TouchableOpacity
-                key={tab}
+                key={tab.id}
                 activeOpacity={0.75}
                 style={styles.subTabItem}
-                onPress={() => setRequestsSubTab(tab)}
+                onPress={() => setRequestsSubTab(tab.id)}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isActive }}
-                accessibilityLabel={`${tab} requests`}
+                accessibilityLabel={`${tab.label} requests`}
               >
                 <Text style={[styles.subTabText, isActive && styles.subTabTextActive]}>
-                  {tab}
+                  {tab.label}
                 </Text>
                 {isActive ? <View style={styles.subTabIndicator} /> : null}
               </TouchableOpacity>
@@ -721,20 +727,24 @@ export const ConsultationScreen: React.FC = () => {
         </View>
       ) : (
         <View style={styles.subTabRow}>
-          {(['Granted', 'Expired', 'Revoked'] as ApprovedSubTab[]).map((tab) => {
-            const isActive = approvedSubTab === tab;
+          {([
+            { id: 'Granted' as ApprovedSubTab, label: t('consents.grantedSubTab') },
+            { id: 'Expired' as ApprovedSubTab, label: t('consents.expiredSubTab') },
+            { id: 'Revoked' as ApprovedSubTab, label: t('consents.revokedSubTab') },
+          ]).map((tab) => {
+            const isActive = approvedSubTab === tab.id;
             return (
               <TouchableOpacity
-                key={tab}
+                key={tab.id}
                 activeOpacity={0.75}
                 style={styles.subTabItem}
-                onPress={() => setApprovedSubTab(tab)}
+                onPress={() => setApprovedSubTab(tab.id)}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isActive }}
-                accessibilityLabel={`${tab} approved consents`}
+                accessibilityLabel={`${tab.label} approved consents`}
               >
                 <Text style={[styles.subTabText, isActive && styles.subTabTextActive]}>
-                  {tab}
+                  {tab.label}
                 </Text>
                 {isActive ? <View style={styles.subTabIndicator} /> : null}
               </TouchableOpacity>
@@ -830,6 +840,9 @@ const styles = StyleSheet.create({
 
   // 1. Header Banner
   headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.lg,

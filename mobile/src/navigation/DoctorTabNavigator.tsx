@@ -6,6 +6,7 @@ import { IconHome, IconBell, IconFile, IconUser } from '@tabler/icons-react-nati
 
 import { colors, spacing, shadows, typography } from '../theme';
 import { DoctorTabParamList, QueueStackParamList } from './types';
+import { useTranslation } from '../i18n';
 
 // Screens
 import { DoctorHome, PatientSummary } from '../screens/doctor';
@@ -24,6 +25,8 @@ const QueueStackNavigator = () => (
 );
 
 const DoctorTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
+  const { t } = useTranslation();
+
   return (
     <View style={styles.wrapper}>
       <View style={styles.bar}>
@@ -44,20 +47,20 @@ const DoctorTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
           };
 
           let IconComponent = IconHome;
-          let label = 'Queue';
+          let label = t('navigation.doctorQueue');
 
           if (route.name === 'Queue') {
             IconComponent = IconHome;
-            label = 'Queue';
+            label = t('navigation.doctorQueue');
           } else if (route.name === 'Alerts') {
             IconComponent = IconBell;
-            label = 'Alerts';
+            label = t('navigation.doctorAlerts');
           } else if (route.name === 'Records') {
             IconComponent = IconFile;
-            label = 'Records';
+            label = t('navigation.doctorRecords');
           } else if (route.name === 'DoctorProfile') {
             IconComponent = IconUser;
-            label = 'Profile';
+            label = t('navigation.doctorProfile');
           }
 
           return (

@@ -6,10 +6,13 @@ import { QueueStackParamList } from '../../navigation/types';
 import { colors, typography, spacing } from '../../theme';
 import { SectionCard, CollapsedRow, Chip, SegmentedToggle } from '../../components/doctor';
 import { ProfileSlider } from '../../components/doctor/ProfileSlider';
+import { useTranslation } from '../../i18n';
 
 type Props = NativeStackScreenProps<QueueStackParamList, 'PatientSummary'>;
 
 export const PatientSummary: React.FC<Props> = ({ navigation, route }) => {
+  const { t } = useTranslation();
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -25,26 +28,25 @@ export const PatientSummary: React.FC<Props> = ({ navigation, route }) => {
             <Text style={styles.subtitle}>Token 07 · 58 · male</Text>
           </View>
         </View>
-        <SegmentedToggle options={['EN', 'HI']} activeIndex={0} onChange={() => {}} />
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.badgeRow}>
           <View style={styles.abhaBadge}>
             <IconCheck size={14} color={colors.successText} />
-            <Text style={styles.abhaText}>ABHA verified</Text>
+            <Text style={styles.abhaText}>{t('doctor.abhaVerified')}</Text>
           </View>
         </View>
 
-        <Text style={styles.draftNotice}>Draft summary — review each section before accepting</Text>
+        <Text style={styles.draftNotice}>{t('doctor.draftNotice')}</Text>
 
         <ProfileSlider />
 
-        <SectionCard title="Chief complaint" onEditPress={() => {}}>
+        <SectionCard title={t('doctor.chiefComplaintLabel')} onEditPress={() => {}}>
           <Text style={styles.bodyText}>Chest pain since this morning, associated with breathlessness</Text>
         </SectionCard>
 
-        <SectionCard title="History of present illness" onEditPress={() => {}}>
+        <SectionCard title={t('doctor.hpiLabel')} onEditPress={() => {}}>
           <View style={styles.tableRow}>
             <Text style={styles.tableKey}>Onset</Text>
             <Text style={styles.tableValue}>Sudden, 3 hours ago</Text>

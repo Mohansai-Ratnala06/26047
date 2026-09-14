@@ -4,9 +4,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Card, GlassCard, Button, Badge } from '../../components';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
+import { useTranslation } from '../../i18n';
 
 export const WelcomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { demoBypass } = useAuthStore();
+  const { t } = useTranslation();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -34,10 +36,10 @@ export const WelcomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
           resizeMode="contain"
         />
 
-        <Badge label="Clinical Intelligence Platform" variant="mint" style={styles.topBadge} />
+        <Badge label={t('auth.clinicalPlatform')} variant="mint" style={styles.topBadge} />
 
         <Text style={styles.tagline}>
-          High-trust clinical intelligence, seamless telemedicine, and unified health records.
+          {t('auth.welcomeTagline')}
         </Text>
       </Animated.View>
 
@@ -57,20 +59,20 @@ export const WelcomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
 
       <Animated.View style={[styles.ctaSection, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         <Button
-          title="Sign In"
+          title={t('auth.signInBtn')}
           size="lg"
           onPress={() => navigation.navigate('Login')}
           accessibilityLabel="Sign In to your account"
         />
         <Button
-          title="Create New Account"
+          title={t('auth.createAccountBtn')}
           variant="secondary"
           size="lg"
           onPress={() => navigation.navigate('SignUp')}
           accessibilityLabel="Create a new account"
         />
         <Button
-          title="Explore Demo (Instant Access)"
+          title={t('auth.demoPatientBtn')}
           variant="ghost"
           size="sm"
           onPress={demoBypass}

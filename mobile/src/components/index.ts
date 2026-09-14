@@ -18,3 +18,4 @@ export * from './ProfileCard';
 export * from './ReminderCard';
 export * from './AIActionButton';
 export * from './SelectableCard';
+export * from './LanguageToggle';

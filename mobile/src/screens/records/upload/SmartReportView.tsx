@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '../../../theme';
+import { useTranslation } from '../../../i18n';
 
 export interface SmartReportData {
   patientName?: string;
@@ -90,6 +91,8 @@ export const SmartReportView: React.FC<SmartReportViewProps> = ({
   documentCode,
   onViewOriginal,
 }) => {
+  const { t } = useTranslation();
+
   // Normalize medications
   const normalizedMeds = (data.medications || []).map((m) => {
     if (typeof m === 'string') return { name: m, dosage: null, frequency: null, duration: null };
@@ -183,7 +186,7 @@ export const SmartReportView: React.FC<SmartReportViewProps> = ({
         <View style={styles.safetyAlertsContainer}>
           <View style={styles.safetyHeader}>
             <Ionicons name="warning" size={18} color="#B91C1C" />
-            <Text style={styles.safetyHeaderText}>DRUG SAFETY NOTICE</Text>
+            <Text style={styles.safetyHeaderText}>{t('smartReport.safetyAlerts')}</Text>
           </View>
           {data.safetyAlerts.map((alert, idx) => (
             <View key={idx} style={styles.safetyItem}>
@@ -197,7 +200,7 @@ export const SmartReportView: React.FC<SmartReportViewProps> = ({
       <View style={styles.accordionsWrapper}>
         {/* A. Diagnostics */}
         <AccordionSection
-          title="Diagnostics"
+          title={t('smartReport.diagnoses')}
           icon="fitness-outline"
           count={diagnosesList.length}
           isOpenDefault={diagnosesList.length > 0}
@@ -254,7 +257,7 @@ export const SmartReportView: React.FC<SmartReportViewProps> = ({
 
         {/* D. Medications */}
         <AccordionSection
-          title="Medications"
+          title={t('smartReport.medications')}
           icon="bandage-outline"
           count={normalizedMeds.length}
           isOpenDefault={normalizedMeds.length > 0}
@@ -282,7 +285,7 @@ export const SmartReportView: React.FC<SmartReportViewProps> = ({
 
         {/* E. Diagnostic Investigations / Tests */}
         <AccordionSection
-          title="Investigations"
+          title={t('smartReport.labTests')}
           icon="flask-outline"
           count={allTests.length}
           isOpenDefault={allTests.length > 0}
@@ -311,7 +314,7 @@ export const SmartReportView: React.FC<SmartReportViewProps> = ({
         {/* F. Vitals */}
         {vitalsList.length > 0 && (
           <AccordionSection
-            title="Vital Signs"
+            title={t('smartReport.vitals')}
             icon="pulse-outline"
             count={vitalsList.length}
             isOpenDefault={true}
@@ -331,7 +334,7 @@ export const SmartReportView: React.FC<SmartReportViewProps> = ({
 
         {/* G. Advice / Recommendations */}
         <AccordionSection
-          title="Advice & Instructions"
+          title={t('smartReport.doctorAdvice')}
           icon="clipboard-outline"
           count={adviceList.length}
           isOpenDefault={adviceList.length > 0}

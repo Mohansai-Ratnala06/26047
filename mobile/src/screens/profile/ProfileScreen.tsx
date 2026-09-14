@@ -24,6 +24,7 @@ import {
 } from '../../components';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
+import { useTranslation, SupportedLanguage } from '../../i18n';
 import { patientApi } from '../../api/patientApi';
 import { healthProfileApi } from '../../api/healthProfileApi';
 
@@ -31,6 +32,7 @@ type ModalType = 'health' | 'consent' | 'identifiers' | 'language' | 'security' 
 
 export const ProfileScreen: React.FC = () => {
   const { user, logout } = useAuthStore();
+  const { t, currentLanguage, setLanguage } = useTranslation();
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -41,7 +43,6 @@ export const ProfileScreen: React.FC = () => {
   // Settings & Toggles
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [isBiometricsEnabled, setIsBiometricsEnabled] = useState<boolean>(true);
-  const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
   const [voiceInteractionMode, setVoiceInteractionMode] = useState<'both' | 'voice' | 'text'>('both');
   
   // Consent Toggles
@@ -60,9 +61,6 @@ export const ProfileScreen: React.FC = () => {
 
       if (patientRes.status === 'fulfilled' && patientRes.value?.success) {
         setPatientData(patientRes.value.data);
-        if (patientRes.value.data?.preferences?.preferredLanguage) {
-          setSelectedLanguage(patientRes.value.data.preferences.preferredLanguage);
-        }
       }
 
       if (healthRes.status === 'fulfilled' && healthRes.value?.success) {
@@ -80,14 +78,7 @@ export const ProfileScreen: React.FC = () => {
   }, []);
 
   const handleLanguageChange = async (langCode: string) => {
-    setSelectedLanguage(langCode);
-    try {
-      await patientApi.updateMe({
-        preferences: { preferredLanguage: langCode },
-      });
-    } catch (e) {
-      console.log('Failed to save language preference', e);
-    }
+    await setLanguage(langCode as SupportedLanguage);
   };
 
   const abhaIdValue =
@@ -102,8 +93,8 @@ export const ProfileScreen: React.FC = () => {
   return (
     <ScreenContainer scrollable hasBottomTabs>
       <Header
-        title="My Profile"
-        subtitle="Identity, health card & clinical settings"
+        title={t('profile.title')}
+        subtitle={t('profile.subtitle')}
         rightAction={
           loading ? (
             <ActivityIndicator size="small" color={colors.primary} />
@@ -123,13 +114,13 @@ export const ProfileScreen: React.FC = () => {
         abhaId={abhaIdValue}
       >
         <View style={styles.cardBadgeRow}>
-          <IdentityChip label="PATIENT ID" value={patientCodeValue} />
-          <Badge label="Active Patient" variant="mint" style={styles.statusBadge} />
+          <IdentityChip label={t('profile.patientIdLabel')} value={patientCodeValue} />
+          <Badge label={t('profile.activePatientBadge')} variant="mint" style={styles.statusBadge} />
         </View>
       </ProfileCard>
 
       {/* Interactive Medical Modules Section */}
-      <SectionHeader title="Health & Clinical Preferences" />
+      <SectionHeader title={t('profile.sectionTitle')} />
 
       <Card variant="outlined" style={styles.modularSectionCard}>
         {/* 1. Health Profile Slot */}
@@ -142,11 +133,11 @@ export const ProfileScreen: React.FC = () => {
             <Ionicons name="fitness-outline" size={18} color={colors.primary} />
           </View>
           <View style={styles.moduleTextCol}>
-            <Text style={styles.moduleTitle}>Health Profile</Text>
+            <Text style={styles.moduleTitle}>{t('profile.healthProfileTitle')}</Text>
             <Text style={styles.moduleDesc}>
               {healthData?.allergies?.length
                 ? `${healthData.allergies.length} allergies recorded • Vitals active`
-                : 'Vitals, allergies, blood group & chronic conditions'}
+                : t('profile.healthProfileDesc')}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
@@ -162,8 +153,8 @@ export const ProfileScreen: React.FC = () => {
             <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
           </View>
           <View style={styles.moduleTextCol}>
-            <Text style={styles.moduleTitle}>Consent & Data Sharing</Text>
-            <Text style={styles.moduleDesc}>ABDM electronic consent manager • Active</Text>
+            <Text style={styles.moduleTitle}>{t('profile.consentTitle')}</Text>
+            <Text style={styles.moduleDesc}>{t('profile.consentDesc')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
         </TouchableOpacity>
@@ -178,8 +169,8 @@ export const ProfileScreen: React.FC = () => {
             <Ionicons name="finger-print-outline" size={18} color={colors.primary} />
           </View>
           <View style={styles.moduleTextCol}>
-            <Text style={styles.moduleTitle}>Digital Identifiers</Text>
-            <Text style={styles.moduleDesc}>ABHA: {abhaIdValue} • Linked</Text>
+            <Text style={styles.moduleTitle}>{t('profile.identifiersTitle')}</Text>
+            <Text style={styles.moduleDesc}>{t('profile.identifiersDesc')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
         </TouchableOpacity>
@@ -194,13 +185,13 @@ export const ProfileScreen: React.FC = () => {
             <Ionicons name="language-outline" size={18} color={colors.primary} />
           </View>
           <View style={styles.moduleTextCol}>
-            <Text style={styles.moduleTitle}>Language & Voice</Text>
+            <Text style={styles.moduleTitle}>{t('profile.languageTitle')}</Text>
             <Text style={styles.moduleDesc}>
-              {selectedLanguage === 'te'
+              {currentLanguage === 'te'
                 ? 'తెలుగు (Telugu)'
-                : selectedLanguage === 'hi'
+                : currentLanguage === 'hi'
                 ? 'हिन्दी (Hindi)'
-                : 'English (Indic voice engine ready)'}
+                : 'English (Clinical Standard)'}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
@@ -216,8 +207,8 @@ export const ProfileScreen: React.FC = () => {
             <Ionicons name="lock-closed-outline" size={18} color={colors.primary} />
           </View>
           <View style={styles.moduleTextCol}>
-            <Text style={styles.moduleTitle}>Privacy & Security</Text>
-            <Text style={styles.moduleDesc}>Biometric authentication, 256-bit vault</Text>
+            <Text style={styles.moduleTitle}>{t('profile.privacyTitle')}</Text>
+            <Text style={styles.moduleDesc}>{t('profile.privacyDesc')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
         </TouchableOpacity>
@@ -232,8 +223,8 @@ export const ProfileScreen: React.FC = () => {
             <Ionicons name="accessibility-outline" size={18} color={colors.primary} />
           </View>
           <View style={styles.moduleTextCol}>
-            <Text style={styles.moduleTitle}>Accessibility</Text>
-            <Text style={styles.moduleDesc}>Dark mode, contrast & reading controls</Text>
+            <Text style={styles.moduleTitle}>{t('profile.accessibilityTitle')}</Text>
+            <Text style={styles.moduleDesc}>{t('profile.accessibilityDesc')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
         </TouchableOpacity>
@@ -241,11 +232,11 @@ export const ProfileScreen: React.FC = () => {
 
       {/* Sign Out Action */}
       <Button
-        title="Sign Out"
+        title={t('profile.signOutBtn')}
         variant="ghost"
         onPress={logout}
         style={styles.logoutBtn}
-        accessibilityLabel="Sign out of your account"
+        accessibilityLabel={t('profile.signOutBtn')}
       />
 
       {/* App Branding Footer */}
@@ -544,16 +535,14 @@ export const ProfileScreen: React.FC = () => {
                 <Text style={styles.cardHeaderTitle}>Preferred Consultation Language</Text>
                 {[
                   { code: 'en', label: 'English', sub: 'Clinical Standard' },
-                  { code: 'hi', label: 'हिन्दी (Hindi)', sub: 'Bhashini AI Voice Engine' },
-                  { code: 'te', label: 'తెలుగు (Telugu)', sub: 'Bhashini AI Voice Engine' },
-                  { code: 'ta', label: 'தமிழ் (Tamil)', sub: 'Bhashini AI Voice Engine' },
-                  { code: 'kn', label: 'ಕನ್ನಡ (Kannada)', sub: 'Bhashini AI Voice Engine' },
+                  { code: 'te', label: 'తెలుగు (Telugu)', sub: 'ఆంధ్రప్రదేశ్ & తెలంగాణ' },
+                  { code: 'hi', label: 'हिन्दी (Hindi)', sub: 'आयुष्मान भारत राष्ट्रीय मानक' },
                 ].map((lang) => (
                   <TouchableOpacity
                     key={lang.code}
                     style={[
                       styles.langOption,
-                      selectedLanguage === lang.code && styles.langOptionActive,
+                      currentLanguage === lang.code && styles.langOptionActive,
                     ]}
                     onPress={() => handleLanguageChange(lang.code)}
                   >
@@ -561,14 +550,14 @@ export const ProfileScreen: React.FC = () => {
                       <Text
                         style={[
                           styles.langName,
-                          selectedLanguage === lang.code && styles.langNameActive,
+                          currentLanguage === lang.code && styles.langNameActive,
                         ]}
                       >
                         {lang.label}
                       </Text>
                       <Text style={styles.langSub}>{lang.sub}</Text>
                     </View>
-                    {selectedLanguage === lang.code ? (
+                    {currentLanguage === lang.code ? (
                       <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
                     ) : null}
                   </TouchableOpacity>

@@ -1,14 +1,32 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { colors } from '../../theme';
+import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
+import { colors, spacing, typography } from '../../theme';
+import { useTranslation } from '../../i18n';
 
-export const DoctorProfile = () => (
-  <View style={styles.container}>
-    <Text style={styles.title}>Profile</Text>
-  </View>
-);
+export const DoctorProfile = () => {
+  const { t } = useTranslation();
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.header}>
+        <Text style={styles.title}>{t('navigation.doctorProfile')}</Text>
+      </View>
+      <View style={styles.container}>
+        <Text style={styles.emptyText}>{t('doctor.profileTitle')}</Text>
+      </View>
+    </SafeAreaView>
+  );
+};
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 20, color: colors.textPrimary }
+  safeArea: { flex: 1, backgroundColor: colors.background },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  title: { fontSize: typography.fontSize.xl, fontWeight: typography.fontWeight.bold, color: colors.textPrimary },
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyText: { fontSize: 16, color: colors.textSecondary },
 });

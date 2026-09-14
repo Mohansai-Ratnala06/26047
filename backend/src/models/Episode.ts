@@ -17,6 +17,22 @@ export interface ITriage {
 export type EpisodeType = 'symptom' | 'consultation' | 'followup' | 'chronic_condition' | 'emergency';
 export type EpisodeStatus = 'open' | 'under_review' | 'resolved' | 'escalated' | 'closed';
 
+export interface IRemedyTracked {
+  remedyName: string;
+  recordId?: string;
+  status: 'suggested' | 'taken' | 'in_progress' | 'discontinued';
+  reliefReported?: 'significant_relief' | 'partial_relief' | 'no_change' | 'worsened' | 'pending';
+  patientFeedback?: string;
+  lastReportedAt?: Date;
+}
+
+export interface IPatientConsent {
+  consented: boolean;
+  consentedAt: Date;
+  scope?: string;
+  version?: string;
+}
+
 export interface IEpisode extends Document {
   patientId: Types.ObjectId;
   episodeCode: string;
@@ -26,6 +42,9 @@ export interface IEpisode extends Document {
   triage?: ITriage;
   doctorId?: Types.ObjectId;
   clinicalNotes?: string;
+  clinicalOutput?: Record<string, any>;
+  remediesTracked?: IRemedyTracked[];
+  patientConsent?: IPatientConsent;
   status: EpisodeStatus;
   startedAt: Date;
   resolvedAt?: Date;
@@ -67,6 +86,31 @@ const EpisodeSchema = new Schema<IEpisode>(
     },
     doctorId: { type: Schema.Types.ObjectId, ref: 'User' },
     clinicalNotes: { type: String },
+    clinicalOutput: { type: Schema.Types.Mixed },
+    remediesTracked: [
+      {
+        remedyName: { type: String, required: true },
+        recordId: { type: String },
+        status: {
+          type: String,
+          enum: ['suggested', 'taken', 'in_progress', 'discontinued'],
+          default: 'suggested',
+        },
+        reliefReported: {
+          type: String,
+          enum: ['significant_relief', 'partial_relief', 'no_change', 'worsened', 'pending'],
+          default: 'pending',
+        },
+        patientFeedback: { type: String },
+        lastReportedAt: { type: Date, default: Date.now },
+      },
+    ],
+    patientConsent: {
+      consented: { type: Boolean, default: true },
+      consentedAt: { type: Date, default: Date.now },
+      scope: { type: String, default: 'clinical_intake_and_triage' },
+      version: { type: String, default: '1.0' },
+    },
     status: {
       type: String,
       enum: ['open', 'under_review', 'resolved', 'escalated', 'closed'],

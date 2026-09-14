@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '../../../theme';
 import { TimelineEpisode, episodeApi } from '../../../api/episodeApi';
 import { conversationApi } from '../../../api/conversationApi';
+import { useTranslation } from '../../../i18n';
 import { EpisodeTimelineNode } from './EpisodeTimelineNode';
 import { TimelineSkeleton } from './TimelineSkeleton';
 
@@ -36,6 +37,7 @@ export const PatientHealthTimeline: React.FC<PatientHealthTimelineProps> = ({
   onOpenRecordDocument,
 }) => {
   const navigation = useNavigation<any>();
+  const { t } = useTranslation();
   const [loadingChildId, setLoadingChildId] = useState<string | null>(null);
 
   // Filter episodes by search query (chief complaint, doctor, status)
@@ -73,10 +75,10 @@ export const PatientHealthTimeline: React.FC<PatientHealthTimelineProps> = ({
         const epDetailRes: any = await episodeApi.getEpisodeById(epId);
         const epData = epDetailRes?.data || epDetailRes;
 
-        let clinicalOutput: any = null;
+        let clinicalOutput: any = epData?.clinicalOutput || null;
         let conversationId: string | undefined;
 
-        if (Array.isArray(epData?.conversations) && epData.conversations.length > 0) {
+        if (!clinicalOutput && Array.isArray(epData?.conversations) && epData.conversations.length > 0) {
           const validConv = epData.conversations.find(
             (c: any) => c.clinicalOutput && Object.keys(c.clinicalOutput).length > 0
           );
@@ -217,12 +219,12 @@ export const PatientHealthTimeline: React.FC<PatientHealthTimelineProps> = ({
         </View>
 
         <Text style={styles.emptyTitle}>
-          {searchQuery ? 'No matching episodes' : 'No health episodes yet'}
+          {searchQuery ? t('records.noRecordFound') : t('timeline.noEpisodes')}
         </Text>
         <Text style={styles.emptySubtitle}>
           {searchQuery
-            ? 'No episodes match your search query. Try searching for a different symptom or complaint.'
-            : 'Your consultations and health records will appear here as they are added.'}
+            ? t('records.noRecordTimelineSub')
+            : t('timeline.noEpisodes')}
         </Text>
 
         <TouchableOpacity
@@ -231,14 +233,14 @@ export const PatientHealthTimeline: React.FC<PatientHealthTimelineProps> = ({
           disabled={refreshing}
           style={styles.emptyRefreshButton}
           accessibilityRole="button"
-          accessibilityLabel="Refresh timeline"
+          accessibilityLabel={t('records.refreshRecordsBtn')}
         >
           {refreshing ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : (
             <>
               <Ionicons name="refresh" size={16} color={colors.primary} />
-              <Text style={styles.emptyRefreshButtonText}>Refresh Timeline</Text>
+              <Text style={styles.emptyRefreshButtonText}>{t('records.refreshRecordsBtn')}</Text>
             </>
           )}
         </TouchableOpacity>

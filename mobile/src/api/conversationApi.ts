@@ -33,6 +33,11 @@ export interface TurnResponseData {
   clinicalOutput?: Record<string, any> | null;
   audioBase64?: string;
   audioMimeType?: string;
+  activeEpisodeId?: string;
+  activeConversationId?: string;
+  switchedToNewEpisode?: boolean;
+  detectedNewComplaint?: string | null;
+  unrelatedProblemDetected?: boolean;
 }
 
 export interface ConversationDoc {
@@ -98,6 +103,17 @@ export const conversationApi = {
     if (limit) params.append('limit', limit.toString());
     if (before) params.append('before', before);
     return apiClient.get(`/messages/${conversationId}?${params.toString()}`);
+  },
+
+  /**
+   * Retrieve all historical messages belonging to a medical episode.
+   * Ensures complete multi-turn continuity across turns and sessions.
+   */
+  getEpisodeMessages: async (
+    episodeId: string,
+    limit: number = 100
+  ): Promise<ApiResponse<{ messages: ConversationMessage[]; pagination?: any }>> => {
+    return apiClient.get(`/messages/episode/${episodeId}?limit=${limit}`);
   },
 };
 

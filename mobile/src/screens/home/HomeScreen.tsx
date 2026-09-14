@@ -12,41 +12,51 @@ import {
   AIActionButton,
   SectionHeader,
   Badge,
+  LanguageToggle,
 } from '../../components';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
+import { useTranslation } from '../../i18n';
 
 export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user } = useAuthStore();
+  const { t, getGreeting } = useTranslation();
+  const displayName = user?.name || 'Abhitha';
+  const greetingInfo = getGreeting(displayName);
 
   return (
     <ScreenContainer scrollable hasBottomTabs>
-      {/* 1. Header with Avatar & Notification Control */}
+      {/* 1. Header with Avatar, Dynamic Time-of-Day Greeting, Language Toggle & Notification Control */}
       <View style={styles.topHeader}>
         <View style={styles.userRow}>
-          <Avatar name={user?.name || ''} size="md" />
+          <Avatar name={displayName} size="md" />
           <View style={styles.userTextCol}>
-            <Text style={styles.greetingSubtitle}>Welcome to Vaidyaarc</Text>
-            <Text style={styles.greetingName}>{user?.name}</Text>
+            <Text style={styles.greetingSubtitle}>{greetingInfo.greeting}</Text>
+            <Text style={styles.greetingName}>{displayName}</Text>
           </View>
         </View>
 
-        <View style={styles.notificationWrapper}>
-          <IconButton
-            icon={<Ionicons name="notifications-outline" size={22} color={colors.textPrimary} />}
-            onPress={() => {}}
-            accessibilityLabel="Notifications"
-            variant="surface"
-          />
-          <View style={styles.notificationDot} />
+        <View style={styles.headerRightRow}>
+          {/* Top Language Toggle Pill with Globe Icon beside Notification Icon */}
+          <LanguageToggle />
+
+          <View style={styles.notificationWrapper}>
+            <IconButton
+              icon={<Ionicons name="notifications-outline" size={22} color={colors.textPrimary} />}
+              onPress={() => {}}
+              accessibilityLabel="Notifications"
+              variant="surface"
+            />
+            <View style={styles.notificationDot} />
+          </View>
         </View>
       </View>
 
       {/* 2. Hero & Tagline */}
       <View style={styles.heroBox}>
-        <Text style={styles.heroTagline}>Intelligent Healthcare Ecosystem</Text>
+        <Text style={styles.heroTagline}>{t('home.heroTagline')}</Text>
         <Text style={styles.heroDescription}>
-          Unified medical intelligence and digital health services at your fingertips.
+          {t('home.heroDescription')}
         </Text>
       </View>
 
@@ -59,16 +69,16 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
               style={{ width: 22, height: 22, marginRight: 8 }}
               resizeMode="contain"
             />
-            <Text style={styles.cardBrandTitle}>Digital Health Card</Text>
+            <Text style={styles.cardBrandTitle}>{t('home.digitalHealthCard')}</Text>
           </View>
-          <Badge label="ABDM Active" variant="mint" size="sm" />
+          <Badge label={t('home.abdmActive')} variant="mint" size="sm" />
         </View>
 
         <View style={styles.cardBodyRow}>
           <View style={styles.cardInfoCol}>
-            <Text style={styles.cardHolderLabel}>HEALTH CARD HOLDER</Text>
-            <Text style={styles.cardHolderName}>{user?.name}</Text>
-            <Text style={styles.cardAbha}>{user?.abhaId || 'Pending ABHA ID'}</Text>
+            <Text style={styles.cardHolderLabel}>{t('home.healthCardHolder')}</Text>
+            <Text style={styles.cardHolderName}>{displayName}</Text>
+            <Text style={styles.cardAbha}>{user?.abhaId || t('home.pendingAbhaId')}</Text>
           </View>
           <View style={styles.qrPlaceholder}>
             <Ionicons name="qr-code-outline" size={36} color={colors.primaryDark} />
@@ -76,30 +86,30 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         </View>
 
         <View style={styles.cardFooterRow}>
-          <Text style={styles.cardSecureMeta}>Secure Health Profile Verified</Text>
-          <Text style={styles.cardExpiry}>Valid: Permanent</Text>
+          <Text style={styles.cardSecureMeta}>{t('home.secureProfileVerified')}</Text>
+          <Text style={styles.cardExpiry}>{t('home.validPermanent')}</Text>
         </View>
       </GlassCard>
 
       {/* 4. AI / Voice Entry Action Button */}
       <AIActionButton
-        title="Speak with VaidyaAI"
-        subtitle="Voice assistant for healthcare navigation & reminders"
+        title={t('home.speakWithAi')}
+        subtitle={t('home.aiSubtitle')}
         onPress={() => navigation.navigate('VoiceAgent')}
         style={styles.aiEntryBtn}
       />
 
       {/* 5. Reminder Card Section */}
-      <SectionHeader title="Today's Reminders" />
+      <SectionHeader title={t('home.todaysReminders')} />
       <ReminderCard
-        title="Log Morning Vitals & Hydration"
-        category="Daily Wellness"
+        title={t('home.morningVitalsTitle')}
+        category={t('home.morningVitalsCategory')}
         time="9:00 AM"
         status="completed"
       />
       <ReminderCard
-        title="Check Health Records Update"
-        category="Clinical Records"
+        title={t('home.checkRecordsTitle')}
+        category={t('home.checkRecordsCategory')}
         time="4:30 PM"
         status="pending"
         onPress={() => navigation.navigate('Records')}
@@ -131,6 +141,11 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
     letterSpacing: -0.3,
+  },
+  headerRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
   },
   notificationWrapper: {
     position: 'relative',

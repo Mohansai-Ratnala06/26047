@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '../../theme';
 import { Badge, Button, LoadingState, ErrorState } from '../../components';
+import { useTranslation } from '../../i18n';
 import { apiClient } from '../../api/apiClient';
 import { episodeApi, TimelineEpisode } from '../../api/episodeApi';
 import { documentApi } from '../../api/documentApi';
@@ -163,7 +164,10 @@ const RecordCard: React.FC<RecordCardProps> = ({
   onViewDetails,
   onOptionsPress,
 }) => {
+  const { t } = useTranslation();
   const iconName = getDocumentIconName(record.documentType);
+  const statusBadge = record.category === 'uploaded' ? t('records.selfUploadedBadge') : t('records.linkedBadge');
+  const sourceLabel = record.category === 'uploaded' ? t('records.documentSource') : t('records.facilityName');
 
   return (
     <View style={styles.cardContainer}>
@@ -175,7 +179,7 @@ const RecordCard: React.FC<RecordCardProps> = ({
 
         <View style={styles.cardFacilityCol}>
           <Text style={styles.cardMetaLabel}>
-            {record.category === 'uploaded' ? 'Document Source' : 'Facility Name'}
+            {sourceLabel}
           </Text>
           <Text style={styles.cardFacilityName} numberOfLines={1}>
             {record.facilityName}
@@ -184,7 +188,7 @@ const RecordCard: React.FC<RecordCardProps> = ({
 
         <View style={styles.cardHeaderRightActions}>
           <Badge
-            label={record.statusBadge}
+            label={statusBadge}
             variant="mint"
             size="sm"
             style={styles.cardStatusBadge}
@@ -194,7 +198,7 @@ const RecordCard: React.FC<RecordCardProps> = ({
             onPress={() => onOptionsPress(record)}
             style={styles.cardOverflowBtn}
             accessibilityRole="button"
-            accessibilityLabel="More options"
+            accessibilityLabel={t('common.moreOptions')}
           >
             <Ionicons name="ellipsis-vertical" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
@@ -204,7 +208,7 @@ const RecordCard: React.FC<RecordCardProps> = ({
       {/* Middle Row: Patient ref number + Bookmark */}
       <View style={styles.cardFieldRow}>
         <View style={styles.cardFieldCol}>
-          <Text style={styles.cardMetaLabel}>Patient ref number</Text>
+          <Text style={styles.cardMetaLabel}>{t('records.patientRefNumber')}</Text>
           <Text style={styles.cardPatientRef} numberOfLines={1}>
             {record.code}
           </Text>
@@ -228,7 +232,7 @@ const RecordCard: React.FC<RecordCardProps> = ({
       {/* Document Type Row */}
       <View style={styles.cardFieldRow}>
         <View style={styles.cardFieldCol}>
-          <Text style={styles.cardMetaLabel}>Health Document Type</Text>
+          <Text style={styles.cardMetaLabel}>{t('records.healthDocumentType')}</Text>
           <Text style={styles.cardDocumentType} numberOfLines={1}>
             {record.documentType}
           </Text>
@@ -249,7 +253,7 @@ const RecordCard: React.FC<RecordCardProps> = ({
           accessibilityRole="button"
           accessibilityLabel={`View records for ${record.facilityName}`}
         >
-          <Text style={styles.viewRecordsBtnText}>View Records</Text>
+          <Text style={styles.viewRecordsBtnText}>{t('records.viewRecordsBtn')}</Text>
           <Ionicons name="chevron-forward" size={14} color={colors.primary} />
         </TouchableOpacity>
       </View>
@@ -264,6 +268,7 @@ const RecordCard: React.FC<RecordCardProps> = ({
 export const RecordsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { user } = useAuthStore();
+  const { t } = useTranslation();
 
   // State
   const [activeTab, setActiveTab] = useState<RecordCategoryTab>('timeline');
@@ -460,13 +465,13 @@ export const RecordsScreen: React.FC = () => {
   // Search placeholder based on reference UX
   const searchPlaceholder = useMemo(() => {
     if (activeTab === 'timeline') {
-      return 'Search Episodes, Symptoms or Complaints';
+      return t('records.searchTimelinePlaceholder');
     }
     if (activeTab === 'uploaded') {
-      return 'Search by Facility, Test or Health Document';
+      return t('records.searchUploadedPlaceholder');
     }
-    return 'Search Hospital, Clinic or Lab';
-  }, [activeTab]);
+    return t('records.searchLinkedPlaceholder');
+  }, [activeTab, t]);
 
   // Handlers
   const handleToggleBookmark = (id: string) => {
@@ -492,15 +497,15 @@ export const RecordsScreen: React.FC = () => {
     setOptionsModalVisible(false);
 
     Alert.alert(
-      'Delete Health Record?',
-      `CAUTION: Are you sure you want to permanently delete this record?\n\n• Document: ${record.documentType || 'Health Document'}\n• Code: ${record.code}\n\nThis will permanently remove the original medical file, clinical extractions, AI analysis, and all database records without any trace.\n\nThis action cannot be undone.`,
+      t('records.deleteTitle'),
+      `${t('records.deleteWarning')}\n\n• Document: ${record.documentType || 'Health Document'}\n• Code: ${record.code}`,
       [
         {
-          text: 'Cancel',
+          text: t('common.cancel'),
           style: 'cancel',
         },
         {
-          text: 'Delete Permanently',
+          text: t('records.deleteConfirm'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -516,13 +521,13 @@ export const RecordsScreen: React.FC = () => {
               await fetchRecords(true);
 
               Alert.alert(
-                'Record Deleted',
-                'The health record and all associated files have been permanently deleted.'
+                t('records.deleteTitle'),
+                t('records.deleteSuccess')
               );
             } catch (err: any) {
               Alert.alert(
-                'Delete Failed',
-                err.message || 'Unable to delete this health record. Please try again.'
+                t('common.error'),
+                err.message || t('records.deleteFailed')
               );
             } finally {
               setLoading(false);
@@ -584,7 +589,7 @@ export const RecordsScreen: React.FC = () => {
       {/* 1. Curved Header Banner */}
       <View style={[styles.headerBanner, { paddingTop: Math.max(insets.top, 16) }]}>
         <View style={styles.headerContentRow}>
-          <Text style={styles.headerTitle}>My Records</Text>
+          <Text style={styles.headerTitle}>{t('records.myRecordsTitle')}</Text>
 
           {/* Right Action: Link Button */}
           <TouchableOpacity
@@ -592,7 +597,7 @@ export const RecordsScreen: React.FC = () => {
             onPress={() => setLinkInfoModalVisible(true)}
             style={styles.linkButton}
             accessibilityRole="button"
-            accessibilityLabel="Link Health Records"
+            accessibilityLabel={t('records.linkRecordsTitle')}
           >
             <Ionicons name="link-outline" size={20} color="#FFFFFF" />
           </TouchableOpacity>
@@ -619,7 +624,7 @@ export const RecordsScreen: React.FC = () => {
                 activeTab === 'timeline' && styles.segmentTextActive,
               ]}
             >
-              Timeline
+              {t('records.timelineTab')}
             </Text>
           </TouchableOpacity>
 
@@ -640,7 +645,7 @@ export const RecordsScreen: React.FC = () => {
                 activeTab === 'uploaded' && styles.segmentTextActive,
               ]}
             >
-              Self Uploaded
+              {t('records.selfUploadedTab')}
             </Text>
           </TouchableOpacity>
 
@@ -661,7 +666,7 @@ export const RecordsScreen: React.FC = () => {
                 activeTab === 'linked' && styles.segmentTextActive,
               ]}
             >
-              Linked Records
+              {t('records.linkedRecordsTab')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -766,13 +771,13 @@ export const RecordsScreen: React.FC = () => {
           {filteredRecords.length === 0 ? (
             <View style={styles.emptyContainer}>
               <DocumentEmptyIcon />
-              <Text style={styles.emptyMessage}>No record found</Text>
+              <Text style={styles.emptyMessage}>{t('records.noRecordFound')}</Text>
               <Text style={styles.emptySubMessage}>
                 {searchQuery
-                  ? 'No records match your search criteria. Try a different query or clear filters.'
+                  ? t('records.noRecordTimelineSub')
                   : activeTab === 'uploaded'
-                  ? 'You have not uploaded any records yet. Tap Upload below to add your prescriptions or lab tests.'
-                  : 'No clinical records have been linked from hospitals or diagnostic labs yet.'}
+                  ? t('records.noRecordUploadedSub')
+                  : t('records.noRecordLinkedSub')}
               </Text>
               <TouchableOpacity
                 activeOpacity={0.85}
@@ -780,12 +785,12 @@ export const RecordsScreen: React.FC = () => {
                 disabled={refreshing}
                 style={styles.emptyRefreshButton}
                 accessibilityRole="button"
-                accessibilityLabel="Refresh Records"
+                accessibilityLabel={t('records.refreshRecordsBtn')}
               >
                 {refreshing ? (
                   <ActivityIndicator size="small" color={colors.primary} />
                 ) : (
-                  <Text style={styles.emptyRefreshButtonText}>Refresh Records</Text>
+                  <Text style={styles.emptyRefreshButtonText}>{t('records.refreshRecordsBtn')}</Text>
                 )}
               </TouchableOpacity>
             </View>

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Header, Input, Button, ErrorState } from '../../components';
 import { colors, spacing, typography } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
+import { useTranslation } from '../../i18n';
 
 export const SignUpScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [name, setName] = useState('');
@@ -13,6 +14,7 @@ export const SignUpScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const { signUp, loading, error, clearError } = useAuthStore();
+  const { t } = useTranslation();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
@@ -39,8 +41,8 @@ export const SignUpScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   return (
     <ScreenContainer scrollable>
       <Header
-        title="Create Account"
-        subtitle="Join Vaidyaarc for intelligent healthcare"
+        title={t('auth.signUpTitle')}
+        subtitle={t('auth.signUpSubtitle')}
         onBack={() => navigation.goBack()}
       />
 
@@ -55,7 +57,7 @@ export const SignUpScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         ) : null}
 
         <Input
-          label="Full Name"
+          label={t('auth.fullNameLabel')}
           placeholder="e.g. Aarav Sharma"
           value={name}
           onChangeText={setName}
@@ -63,7 +65,7 @@ export const SignUpScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         />
 
         <Input
-          label="Mobile Phone"
+          label={t('auth.phoneLabel')}
           placeholder="+91 98765 43210"
           value={phone}
           onChangeText={setPhone}
@@ -72,7 +74,7 @@ export const SignUpScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         />
 
         <Input
-          label="Email Address (Optional)"
+          label={t('auth.emailLabel')}
           placeholder="e.g. aarav.sharma@example.com"
           value={email}
           onChangeText={setEmail}
@@ -91,7 +93,7 @@ export const SignUpScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         />
 
         <Input
-          label="Password"
+          label={t('auth.passwordLabel')}
           placeholder="Create secure password"
           value={password}
           onChangeText={setPassword}
@@ -105,7 +107,7 @@ export const SignUpScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         />
 
         <Button
-          title="Complete Registration"
+          title={t('auth.createAccountBtn')}
           size="lg"
           onPress={handleSignUp}
           loading={loading}
@@ -114,9 +116,9 @@ export const SignUpScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         />
 
         <View style={styles.footerRow}>
-          <Text style={styles.footerText}>Already registered?</Text>
+          <Text style={styles.footerText}>{t('auth.alreadyHaveAccount')}</Text>
           <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.footerLink}> Sign In</Text>
+            <Text style={styles.footerLink}> {t('auth.signInBtn')}</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>

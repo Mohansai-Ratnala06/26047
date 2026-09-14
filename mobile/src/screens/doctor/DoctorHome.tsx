@@ -5,6 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { QueueStackParamList } from '../../navigation/types';
 import { colors, typography, spacing } from '../../theme';
 import { MetricCard, PatientRow } from '../../components/doctor';
+import { useTranslation } from '../../i18n';
 
 interface DoctorHomeProps {
   navigation: NativeStackNavigationProp<QueueStackParamList, 'DoctorHome'>;
@@ -17,13 +18,15 @@ const queue = [
 ];
 
 export const DoctorHome: React.FC<DoctorHomeProps> = ({ navigation }) => {
+  const { t, getGreeting } = useTranslation();
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
         {/* Header Row */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Good morning</Text>
+            <Text style={styles.greeting}>{getGreeting().greeting}</Text>
             <Text style={styles.doctorName}>Dr. Meera Rao</Text>
             <Text style={styles.subtitle}>Cardiology OPD · Room 4</Text>
           </View>
@@ -35,13 +38,13 @@ export const DoctorHome: React.FC<DoctorHomeProps> = ({ navigation }) => {
 
         {/* Metric Row */}
         <View style={styles.metricRow}>
-          <MetricCard label="Waiting" value="12" />
-          <MetricCard label="Red flags" value="2" valueColor="danger" />
-          <MetricCard label="Avg wait" value="14m" />
+          <MetricCard label={t('doctor.waitingLabel')} value="12" />
+          <MetricCard label={t('doctor.redFlagsLabel')} value="2" valueColor="danger" />
+          <MetricCard label={t('doctor.avgWaitLabel')} value="14m" />
         </View>
 
         {/* Queue Section */}
-        <Text style={styles.sectionLabel}>Queue</Text>
+        <Text style={styles.sectionLabel}>{t('doctor.queueTitle')}</Text>
         <View style={styles.queueList}>
           {queue.map((patient) => (
             <PatientRow
@@ -64,6 +67,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: spacing.lg,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   greeting: { fontSize: 13, color: colors.textSecondary, marginBottom: 2 },
   doctorName: { fontSize: 18, fontWeight: typography.fontWeight.medium, color: colors.textPrimary, marginBottom: 2 },

@@ -15,7 +15,7 @@ export const createEpisode = async (req: Request, res: Response) => {
       return res.status(404).json(response);
     }
 
-    const { chiefComplaint, type, symptoms, doctorId } = req.body;
+    const { chiefComplaint, type, symptoms, doctorId, patientConsent } = req.body;
     const episodeCode = await generateCode('EP');
 
     const episode = new Episode({
@@ -25,6 +25,12 @@ export const createEpisode = async (req: Request, res: Response) => {
       chiefComplaint,
       symptoms: symptoms || [],
       doctorId,
+      patientConsent: {
+        consented: patientConsent?.consented !== false,
+        consentedAt: patientConsent?.consentedAt ? new Date(patientConsent.consentedAt) : new Date(),
+        scope: patientConsent?.scope || 'clinical_intake_and_triage',
+        version: patientConsent?.version || '1.0',
+      },
       status: 'open',
       startedAt: new Date(),
     });
@@ -303,7 +309,22 @@ export const getEpisodes = async (req: Request, res: Response) => {
         };
       });
 
-      const response: ApiResponse = { success: true, data: enrichedEpisodes };
+      // Filter out abandoned ghost episodes that have zero conversations, documents, prescriptions, or clinical data
+      const validEpisodes = enrichedEpisodes.filter((ep) => {
+        const hasActivity =
+          (ep.counts?.conversations && ep.counts.conversations > 0) ||
+          (ep.counts?.records && ep.counts.records > 0) ||
+          (ep.counts?.documents && ep.counts.documents > 0) ||
+          (ep.counts?.prescriptions && ep.counts.prescriptions > 0) ||
+          (ep.counts?.investigations && ep.counts.investigations > 0) ||
+          ep.availableData?.aiSummary ||
+          (ep.symptoms && ep.symptoms.length > 0) ||
+          Boolean(ep.clinicalNotes) ||
+          Boolean(ep.clinicalOutput);
+        return hasActivity;
+      });
+
+      const response: ApiResponse = { success: true, data: validEpisodes };
       return res.status(200).json(response);
     }
 

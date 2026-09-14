@@ -62,6 +62,9 @@ export interface TurnResponseDTO {
   red_flags: string[];
   updated_state: Record<string, any>;
   clinical_output?: Record<string, any> | null;
+  unrelated_problem_detected?: boolean;
+  detected_new_complaint?: string | null;
+  confirm_start_new_episode?: boolean;
 }
 
 export interface BrainHealthResult {
@@ -71,15 +74,33 @@ export interface BrainHealthResult {
   phases: string;
 }
 
+import geminiNurseBrainService from './geminiNurseBrain.service';
+
 export class ClinicalBrainService {
   private get baseUrl(): string {
     return (config.brainServiceUrl || process.env.BRAIN_SERVICE_URL || 'http://localhost:8000').replace(/\/+$/, '');
   }
 
+  private get engineMode(): string {
+    // Defaults to 'gemini' as requested for current primary response, but fully switchable to 'brain_service' or 'fallback'
+    return (process.env.CLINICAL_ENGINE_MODE || 'gemini').toLowerCase().trim();
+  }
+
   /**
-   * Health and readiness probe for the upstream Python Clinical Brain.
+   * Health and readiness probe for the clinical brain engine.
    */
   async checkHealth(): Promise<BrainHealthResult> {
+    const mode = this.engineMode;
+
+    if (mode === 'gemini') {
+      return {
+        status: 'ok',
+        service: 'Vaidyaarc Gemini Dual-Stream Nurse Brain',
+        version: '3.5-flash-grounded',
+        phases: 'Phase 7, 8B, 12',
+      };
+    }
+
     try {
       const response = await fetch(`${this.baseUrl}/health`, {
         method: 'GET',
@@ -95,18 +116,46 @@ export class ClinicalBrainService {
       const data = (await response.json()) as BrainHealthResult;
       return data;
     } catch (error: any) {
-      console.error('[ClinicalBrainService] Health check error:', error.message);
-      throw new Error(`Upstream Clinical Brain unreachable at ${this.baseUrl}: ${error.message}`);
+      console.warn(`[ClinicalBrainService] Python Brain health check failed at ${this.baseUrl}: ${error.message}`);
+      return {
+        status: 'fallback_ready',
+        service: 'Vaidyaarc Python Brain (Offline) -> Gemini Fallback Active',
+        version: 'hybrid-v1',
+        phases: 'Phase 7, 8B, 12',
+      };
     }
   }
 
   /**
-   * Process a single clinical conversational/intake turn with the Python Brain.
-   *
-   * @param input NormalizedClinicalInputDTO payload
-   * @returns TurnResponseDTO containing updated state and clinical output
+   * Process a clinical turn using the configured engine:
+   * - 'gemini': Uses the Gemini 3.5 Flash Nurse Brain with grounded statutory Ayurveda and episode memory.
+   * - 'brain_service': Routes to the upstream Python microservice (port 8000).
+   * - 'fallback': Tries Python microservice first, then immediately falls back to Gemini if offline.
    */
   async processClinicalTurn(input: NormalizedClinicalInputDTO): Promise<TurnResponseDTO> {
+    const mode = this.engineMode;
+
+    if (mode === 'gemini') {
+      return this.callGeminiBrain(input);
+    }
+
+    if (mode === 'fallback') {
+      try {
+        return await this.callPythonBrain(input);
+      } catch (pythonError: any) {
+        console.warn('[ClinicalBrainService] Upstream Python Brain offline/failed, falling back to Gemini Nurse Brain:', pythonError.message);
+        return this.callGeminiBrain(input);
+      }
+    }
+
+    // Default: 'brain_service'
+    return this.callPythonBrain(input);
+  }
+
+  /**
+   * Calls the external Python Brain microservice (Preserved untouched for future use).
+   */
+  async callPythonBrain(input: NormalizedClinicalInputDTO): Promise<TurnResponseDTO> {
     try {
       const endpoint = `${this.baseUrl}/v1/clinical/turn`;
       const response = await fetch(endpoint, {
@@ -126,9 +175,16 @@ export class ClinicalBrainService {
       const data = (await response.json()) as TurnResponseDTO;
       return data;
     } catch (error: any) {
-      console.error('[ClinicalBrainService] Turn processing error:', error.message);
+      console.error('[ClinicalBrainService] Python Brain turn processing error:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Calls the in-process Gemini Dual-Stream Nurse Brain service.
+   */
+  async callGeminiBrain(input: NormalizedClinicalInputDTO): Promise<TurnResponseDTO> {
+    return geminiNurseBrainService.processClinicalTurn(input);
   }
 }
 

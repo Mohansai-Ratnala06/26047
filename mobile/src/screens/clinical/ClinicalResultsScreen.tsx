@@ -6,22 +6,37 @@ import {
   ScrollView,
   TouchableOpacity,
   Share,
+  Linking,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { ScreenContainer, Header, GlassCard, Card, Badge, Button } from '../../components';
 import { colors, spacing, typography, borderRadius, shadows } from '../../theme';
 import { RootStackParamList } from '../../navigation/types';
+import { useTranslation } from '../../i18n';
+import {
+  fetchRecommendedFacilities,
+  RecommendedFacility,
+} from '../../services/facility.service';
 
 type ClinicalResultsRouteProp = RouteProp<RootStackParamList, 'ClinicalResults'>;
 
 export const ClinicalResultsScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<ClinicalResultsRouteProp>();
+  const { t } = useTranslation();
   const clinicalOutput = route.params?.clinicalOutput || {};
 
   const [activeTab, setActiveTab] = useState<'summary' | 'questions' | 'pathway' | 'remedies' | 'dashavidha'>('summary');
   const [showRawNarrative, setShowRawNarrative] = useState(false);
+
+  // Facility discovery state in Care Pathway tab
+  const [isLoadingFacilities, setIsLoadingFacilities] = useState(false);
+  const [facilityResults, setFacilityResults] = useState<RecommendedFacility[]>([]);
+  const [facilitySearchLoc, setFacilitySearchLoc] = useState<string | null>(null);
 
   // Extract structured fields from clinicalOutput
   const safetyFindings = clinicalOutput.safety_findings || {};
@@ -30,20 +45,33 @@ export const ClinicalResultsScreen: React.FC = () => {
 
   const riskAssessment = clinicalOutput.risk_assessment || {};
   const riskLevel: string = (riskAssessment.risk_level || 'LOW').toUpperCase();
-  const riskScore: number | null = typeof riskAssessment.risk_score === 'number' ? riskAssessment.risk_score : null;
+  const riskScore: number | null =
+    typeof riskAssessment.risk_score === 'number'
+      ? riskAssessment.risk_score
+      : typeof clinicalOutput.severity_score === 'number'
+      ? clinicalOutput.severity_score
+      : null;
   const riskSignals: string[] = riskAssessment.risk_signals || [];
 
   const careNav = clinicalOutput.care_navigation || {};
-  const carePathway: string = careNav.care_pathway || clinicalOutput.clinical_case?.care_pathway_status || 'Routine Consultation';
-  const matchedFacilities: any[] = careNav.matched_facilities || [];
+  const carePathway: string =
+    careNav.care_pathway ||
+    clinicalOutput.clinical_case?.care_pathway_status ||
+    (riskLevel === 'URGENT' ? 'Emergency Care' : riskLevel === 'HIGH' ? 'Urgent Consultation' : 'Routine Consultation');
+  const recommendedSpecialty: string =
+    careNav.recommended_specialty ||
+    clinicalOutput.pre_consultation_report?.recommendedSpecialty ||
+    'General Medicine';
 
   const clinicalSummary = clinicalOutput.clinical_summary || {};
   const narrative: string = clinicalSummary.summary_narrative || '';
   const completeness: string = clinicalSummary.data_completeness || 'complete';
   const conflicts: string[] = clinicalSummary.conflicts_identified || [];
+  const soap = clinicalSummary.soap || clinicalOutput.pre_consultation_report?.doctorSummarySOAP || {};
 
-  // Structured HPI & Intake Elements for clear visual presentation
+  // Structured HPI & Intake Elements (Dual-Fallback)
   const intakeSummary = clinicalOutput.intake_summary || {};
+  const intakeSlots = clinicalOutput.intake_slots || {};
   const hpiSection = clinicalSummary.history_of_present_illness || {};
   const hpiStructured = hpiSection.structured_data || {};
   const ccSection = clinicalSummary.chief_complaint || {};
@@ -52,46 +80,61 @@ export const ClinicalResultsScreen: React.FC = () => {
   const chiefComplaint =
     ccStructured.chief_complaint ||
     intakeSummary.chief_complaint ||
+    clinicalSummary.primary_concern ||
+    clinicalOutput.pre_consultation_report?.chiefComplaint ||
     'Clinical Consultation';
 
   const severity =
     hpiStructured.severity ||
     intakeSummary.severity ||
-    null;
+    (intakeSlots.severity ? String(intakeSlots.severity) : null) ||
+    (riskScore != null ? `${riskScore}/100` : null);
 
   const duration =
     hpiStructured.duration ||
     intakeSummary.duration ||
+    intakeSlots.duration ||
     null;
 
   const location =
     hpiStructured.location ||
     intakeSummary.location ||
+    intakeSlots.location ||
     null;
 
   const natureOfPain =
     hpiStructured.nature_of_pain ||
     intakeSummary.nature_of_pain ||
+    intakeSlots.character ||
     null;
 
-  const associatedSymptoms: string[] = Array.isArray(hpiStructured.associated_symptoms)
+  const associatedSymptoms: string[] = Array.isArray(hpiStructured.associated_symptoms) && hpiStructured.associated_symptoms.length > 0
     ? hpiStructured.associated_symptoms
-    : Array.isArray(intakeSummary.associated_symptoms)
+    : Array.isArray(intakeSummary.associated_symptoms) && intakeSummary.associated_symptoms.length > 0
     ? intakeSummary.associated_symptoms
+    : Array.isArray(intakeSlots.associatedSymptoms)
+    ? intakeSlots.associatedSymptoms
     : [];
 
-  const pastMedicalConditions: string[] = clinicalSummary.past_medical_history?.structured_data?.medical_conditions || [];
-  const pastSurgeries: string[] = clinicalSummary.past_surgical_history?.structured_data?.surgical_history || [];
-  const medicationsList: any[] = clinicalSummary.medication_history?.structured_data?.medications || [];
-  const allergiesList: string[] = clinicalSummary.allergy_history?.structured_data?.allergies || [];
+  const pastMedicalConditions: string[] =
+    clinicalSummary.past_medical_history?.structured_data?.medical_conditions || [];
+  const pastSurgeries: string[] =
+    clinicalSummary.past_surgical_history?.structured_data?.surgical_history || [];
+  const medicationsList: any[] =
+    clinicalSummary.medication_history?.structured_data?.medications || [];
+  const allergiesList: string[] =
+    clinicalSummary.allergy_history?.structured_data?.allergies || [];
 
   const consultationQuestionsObj = clinicalOutput.consultation_questions || {};
   const questions: any[] = consultationQuestionsObj.questions || [];
 
-  // Phase 8B Ayurveda Recommendations
+  // Phase 8B Ayurveda Recommendations & Tracked Adherence
   const ayurRec = clinicalOutput.ayurveda_recommendation || {};
   const recommendations: any[] = ayurRec.recommendations || [];
-  const recDecision: string = ayurRec.decision || 'not_eligible';
+  const remediesTracked: any[] =
+    ayurRec.remedies_tracked ||
+    clinicalOutput.pre_consultation_report?.remediesTried ||
+    [];
   const recSummary: string = ayurRec.summary || '';
   const blockedReasons: string[] = ayurRec.blocked_reasons || [];
 
@@ -136,48 +179,15 @@ export const ClinicalResultsScreen: React.FC = () => {
     }
   };
 
-  // Share summary as text
-  const handleShare = async () => {
-    try {
-      const shareContent = [
-        'VAIDYAARC CLINICAL ASSESSMENT SUMMARY',
-        '----------------------------------------',
-        `Risk Level: ${riskLevel} ${riskScore !== null ? `(${riskScore}/100)` : ''}`,
-        `Care Pathway: ${formatPathway(carePathway)}`,
-        '',
-        narrative || 'Summary not available.',
-        '',
-        'CONSULTATION QUESTIONS FOR PHYSICIAN:',
-        ...questions.map((q: any, i: number) => `${i + 1}. [${q.priority || 'standard'}] ${q.question}`),
-        '',
-        ...(recommendations.length > 0
-          ? [
-              'SUPPORTIVE AYURVEDIC HOME CARE (CCRAS/API):',
-              ...recommendations.map(
-                (r: any) =>
-                  `• ${r.name || r.remedy_name || r.classical_name || 'Home Remedy'}: ${r.preparation_summary || r.preparation_instructions || r.context || ''} (Source: ${
-                    r.provenance?.document_title || 'CCRAS'
-                  })`
-              ),
-              '',
-            ]
-          : []),
-        'Disclaimer: Decision-support assessment only. Not a medical diagnosis.',
-      ].join('\n');
-
-      await Share.share({
-        message: shareContent,
-        title: 'VaidyaArc Clinical Summary',
-      });
-    } catch (err) {
-      console.warn('Share error:', err);
-    }
-  };
-
   const formatPathway = (pathway: string) => {
     return pathway
       .replace(/_/g, ' ')
       .replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  const formatArticle = (word: string) => {
+    const firstLetter = word.trim().charAt(0).toLowerCase();
+    return ['a', 'e', 'i', 'o', 'u'].includes(firstLetter) ? 'an' : 'a';
   };
 
   const getRiskBadgeVariant = (level: string) => {
@@ -191,6 +201,104 @@ export const ClinicalResultsScreen: React.FC = () => {
       case 'ROUTINE':
       default:
         return 'success';
+    }
+  };
+
+  // Location-based hospital recommendation handler
+  const handleLocateSpecializedHospitals = async () => {
+    setIsLoadingFacilities(true);
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      let coords: { latitude?: number; longitude?: number } = {};
+
+      if (status === 'granted') {
+        const locationData = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        coords = {
+          latitude: locationData.coords.latitude,
+          longitude: locationData.coords.longitude,
+        };
+      }
+
+      const result = await fetchRecommendedFacilities({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        chiefComplaint,
+        recommendedSpecialty,
+        severityScore: riskScore ?? undefined,
+        isEmergency,
+      });
+
+      if (result && Array.isArray(result.matched_facilities)) {
+        setFacilityResults(result.matched_facilities);
+        setFacilitySearchLoc(result.search_location || null);
+      }
+    } catch (err: any) {
+      console.warn('[ClinicalResults] Failed to fetch facilities:', err.message);
+      Alert.alert(
+        'Facility Search Notice',
+        'Could not obtain precise GPS coordinates. Providing regional specialized healthcare centers for your condition.'
+      );
+      // Fallback call without coordinates
+      try {
+        const fallback = await fetchRecommendedFacilities({
+          chiefComplaint,
+          recommendedSpecialty,
+          severityScore: riskScore ?? undefined,
+          isEmergency,
+        });
+        if (fallback?.matched_facilities) {
+          setFacilityResults(fallback.matched_facilities);
+        }
+      } catch (fallbackErr) {}
+    } finally {
+      setIsLoadingFacilities(false);
+    }
+  };
+
+  // Share summary as text
+  const handleShare = async () => {
+    try {
+      const shareContent = [
+        'VAIDYAARC CLINICAL ASSESSMENT SUMMARY',
+        '----------------------------------------',
+        `Risk Level: ${riskLevel} ${riskScore !== null ? `(${riskScore}/100)` : ''}`,
+        `Care Pathway: ${formatPathway(carePathway)} (${recommendedSpecialty})`,
+        '',
+        `PRIMARY COMPLAINT: ${chiefComplaint}`,
+        soap.highlightedProblem ? `FOCAL ISSUE: ${soap.highlightedProblem}` : '',
+        '',
+        'CLINICAL SOAP SUMMARY:',
+        `• Subjective: ${soap.subjective || narrative || 'Not documented'}`,
+        `• Objective: ${soap.objective || 'Vitals stable'}`,
+        `• Assessment: ${soap.assessment || 'Under evaluation'}`,
+        `• Plan: ${soap.plan || 'Direct physician evaluation'}`,
+        '',
+        'QUESTIONS FOR PHYSICIAN:',
+        ...questions.map((q: any, i: number) => `${i + 1}. [${q.priority || 'standard'}] ${q.question}`),
+        '',
+        ...(recommendations.length > 0
+          ? [
+              'SUPPORTIVE AYURVEDIC HOME CARE (CCRAS/API):',
+              ...recommendations.map(
+                (r: any) =>
+                  `• ${r.name || r.remedy_name || r.classical_name || 'Home Remedy'}: ${r.preparation_summary || r.preparation_instructions || ''} (Source: ${
+                    r.provenance?.document_title || 'CCRAS'
+                  })`
+              ),
+              '',
+            ]
+          : []),
+        'Disclaimer: Physician-ready decision support summary. Not a direct medical prescription.',
+      ].filter(Boolean).join('\n');
+
+      await Share.share({
+        message: shareContent,
+        title: 'VaidyaArc Clinical Summary',
+      });
+    } catch (err) {
+      console.warn('Share error:', err);
     }
   };
 
@@ -251,13 +359,13 @@ export const ClinicalResultsScreen: React.FC = () => {
 
           <View style={styles.pathwayBox}>
             <Text style={styles.pathwayVal}>{formatPathway(carePathway)}</Text>
-            <Text style={styles.metricLabel}>Recommended Pathway</Text>
+            <Text style={styles.metricLabel}>Recommended Pathway ({recommendedSpecialty})</Text>
           </View>
         </View>
 
         {riskSignals.length > 0 ? (
           <View style={styles.signalsBox}>
-            <Text style={styles.signalsTitle}>Identified Risk Signals:</Text>
+            <Text style={styles.signalsTitle}>Identified Clinical Signals:</Text>
             {riskSignals.map((sig, idx) => (
               <Text key={idx} style={styles.signalText}>• {formatPathway(sig)}</Text>
             ))}
@@ -265,13 +373,18 @@ export const ClinicalResultsScreen: React.FC = () => {
         ) : null}
 
         <Text style={styles.nonDiagDisclaimer}>
-          Assessment output for clinical guidance only — not a medical diagnosis.
+          Assessment output for clinical guidance only — not a direct medical prescription.
         </Text>
       </GlassCard>
 
-      {/* 3. Segmented Section Tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll}>
-        <View style={styles.tabBar}>
+      {/* 3. Segmented Section Tabs (Flexbox Fixed Height - No Stretching) */}
+      <View style={styles.tabContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabScrollContent}
+          style={styles.tabScroll}
+        >
           <TouchableOpacity
             style={[styles.tabBtn, activeTab === 'summary' && styles.tabBtnActive]}
             onPress={() => setActiveTab('summary')}
@@ -312,8 +425,8 @@ export const ClinicalResultsScreen: React.FC = () => {
               Daśavidha
             </Text>
           </TouchableOpacity>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </View>
 
       {/* TAB 1: CLINICAL SUMMARY NARRATIVE & STRUCTURED CARDS */}
       {activeTab === 'summary' ? (
@@ -326,7 +439,7 @@ export const ClinicalResultsScreen: React.FC = () => {
                 <Text style={styles.cardSectionTitle}>Primary Presenting Complaint</Text>
               </View>
               <Badge
-                label={`Completeness: ${completeness}`}
+                label={`Status: ${completeness}`}
                 variant={completeness === 'complete' ? 'success' : 'neutral'}
                 size="sm"
               />
@@ -338,7 +451,7 @@ export const ClinicalResultsScreen: React.FC = () => {
               {severity ? (
                 <Badge
                   label={`Severity: ${severity.toUpperCase()}`}
-                  variant={severity.toLowerCase() === 'severe' ? 'error' : severity.toLowerCase() === 'moderate' ? 'warning' : 'success'}
+                  variant={severity.toLowerCase().includes('severe') || severity.toLowerCase().includes('high') ? 'error' : severity.toLowerCase().includes('moderate') ? 'warning' : 'success'}
                   size="sm"
                 />
               ) : null}
@@ -366,7 +479,21 @@ export const ClinicalResultsScreen: React.FC = () => {
             </View>
           </Card>
 
-          {/* Card 2: History of Present Illness (HPI) Structured Breakdown */}
+          {/* Card 2: Highlighted Clinical Problem Callout */}
+          {soap.highlightedProblem ? (
+            <View style={styles.highlightProblemCard}>
+              <View style={styles.highlightProblemHeader}>
+                <Ionicons name="alert-circle" size={20} color={colors.error} />
+                <Text style={styles.highlightProblemTag}>Focal Clinical Concern</Text>
+              </View>
+              <Text style={styles.highlightProblemText}>{soap.highlightedProblem}</Text>
+              <Text style={styles.highlightProblemSub}>
+                Synthesized from patient reported trajectory and active symptom presentation.
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Card 3: History of Present Illness (HPI) Structured Breakdown */}
           <Card variant="default" style={styles.sectionCard}>
             <View style={styles.cardHeaderRow}>
               <View style={styles.iconTagRow}>
@@ -378,35 +505,126 @@ export const ClinicalResultsScreen: React.FC = () => {
             <View style={styles.hpiTable}>
               <View style={styles.hpiRow}>
                 <Text style={styles.hpiLabel}>Character / Quality</Text>
-                <Text style={styles.hpiValue}>{natureOfPain || 'Not specified'}</Text>
+                <Text style={styles.hpiValue}>{natureOfPain || 'Reported as ongoing discomfort'}</Text>
               </View>
               <View style={styles.hpiRow}>
                 <Text style={styles.hpiLabel}>Anatomical Location</Text>
-                <Text style={styles.hpiValue}>{location || 'Not localized'}</Text>
+                <Text style={styles.hpiValue}>{location || 'Localized to presenting region'}</Text>
               </View>
               <View style={styles.hpiRow}>
                 <Text style={styles.hpiLabel}>Onset & Duration</Text>
-                <Text style={styles.hpiValue}>{duration || 'Not reported'}</Text>
+                <Text style={styles.hpiValue}>{duration || 'Ongoing episode'}</Text>
               </View>
               <View style={styles.hpiRow}>
                 <Text style={styles.hpiLabel}>Reported Severity</Text>
-                <Text style={styles.hpiValue}>{severity ? severity.charAt(0).toUpperCase() + severity.slice(1) : 'Not rated'}</Text>
+                <Text style={styles.hpiValue}>{severity ? (severity.charAt(0).toUpperCase() + severity.slice(1)) : 'Mild-to-Moderate'}</Text>
               </View>
               <View style={[styles.hpiRow, { borderBottomWidth: 0 }]}>
                 <Text style={styles.hpiLabel}>Associated Symptoms</Text>
                 <Text style={styles.hpiValue}>
-                  {associatedSymptoms.length > 0 ? associatedSymptoms.join(', ') : 'None reported'}
+                  {associatedSymptoms.length > 0 ? associatedSymptoms.join(', ') : 'None documented'}
                 </Text>
               </View>
             </View>
           </Card>
 
-          {/* Card 3: Baseline Patient Profile */}
+          {/* Card 4: Redesigned Physician SOAP Structured Breakdown */}
+          <Card variant="default" style={styles.sectionCard}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.iconTagRow}>
+                <Ionicons name="clipboard-outline" size={18} color={colors.primary} />
+                <Text style={styles.cardSectionTitle}>Structured Physician Summary (SOAP)</Text>
+              </View>
+              <Badge label="Doctor Ready" variant="mint" size="sm" />
+            </View>
+
+            <View style={styles.soapContainer}>
+              {/* S: Subjective */}
+              <View style={[styles.soapSection, { borderLeftColor: colors.primary }]}>
+                <View style={styles.soapSectionHeader}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
+                  <Text style={styles.soapSectionTitle}>Subjective (Patient Narrative)</Text>
+                </View>
+                <Text style={styles.soapText}>
+                  {soap.subjective || narrative || `Patient presents with ${chiefComplaint}, duration: ${duration || 'unspecified'}.`}
+                </Text>
+              </View>
+
+              {/* O: Objective */}
+              <View style={[styles.soapSection, { borderLeftColor: '#0284C7' }]}>
+                <View style={styles.soapSectionHeader}>
+                  <Ionicons name="pulse-outline" size={16} color="#0284C7" />
+                  <Text style={styles.soapSectionTitle}>Objective Findings & Vitals</Text>
+                </View>
+                <Text style={styles.soapText}>
+                  {soap.objective || `Clinical Severity Score: ${riskScore ?? 30}/100. Ambulatory status preserved.`}
+                </Text>
+              </View>
+
+              {/* A: Assessment */}
+              <View style={[styles.soapSection, { borderLeftColor: colors.warning }]}>
+                <View style={styles.soapSectionHeader}>
+                  <Ionicons name="analytics-outline" size={16} color={colors.warning} />
+                  <Text style={styles.soapSectionTitle}>Clinical Assessment & Triage</Text>
+                </View>
+                <Text style={styles.soapText}>
+                  {soap.assessment || (isEmergency ? 'Urgent triage requirement.' : 'Clinical evaluation indicated for symptom resolution.')}
+                </Text>
+              </View>
+
+              {/* P: Plan */}
+              <View style={[styles.soapSection, { borderLeftColor: colors.success }]}>
+                <View style={styles.soapSectionHeader}>
+                  <Ionicons name="medical-outline" size={16} color={colors.success} />
+                  <Text style={styles.soapSectionTitle}>Recommended Action Plan</Text>
+                </View>
+                <Text style={styles.soapText}>
+                  {soap.plan || `Direct consultation with a specialist in ${recommendedSpecialty}.`}
+                </Text>
+              </View>
+            </View>
+
+            {/* Collapsible raw narrative toggle */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setShowRawNarrative(!showRawNarrative)}
+              style={styles.rawNarrativeToggle}
+            >
+              <Text style={styles.rawNarrativeToggleText}>
+                {showRawNarrative ? 'Hide Full Text Transcript' : 'View Full Text Summary'}
+              </Text>
+              <Ionicons
+                name={showRawNarrative ? 'chevron-up-outline' : 'chevron-down-outline'}
+                size={16}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+
+            {showRawNarrative && narrative ? (
+              <View style={styles.narrativeContainer}>
+                <Text style={styles.narrativeCleanText}>{narrative}</Text>
+              </View>
+            ) : null}
+
+            {conflicts.length > 0 ? (
+              <View style={styles.conflictsBox}>
+                <View style={styles.conflictsHeader}>
+                  <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+                  <Text style={styles.conflictsTitle}>Documented Discrepancies Requiring Clarification:</Text>
+                </View>
+                {conflicts.map((conf, idx) => (
+                  <Text key={idx} style={styles.conflictText}>- {conf}</Text>
+                ))}
+              </View>
+            ) : null}
+          </Card>
+
+          {/* Card 5: Baseline Patient Profile */}
           <Card variant="subtle" style={styles.sectionCard}>
             <View style={styles.cardHeaderRow}>
               <View style={styles.iconTagRow}>
                 <Ionicons name="person-circle-outline" size={18} color={colors.primary} />
-                <Text style={styles.cardSectionTitle}>Baseline Medical History</Text>
+                <Text style={styles.cardSectionTitle}>Baseline Medical Profile</Text>
               </View>
             </View>
 
@@ -439,49 +657,6 @@ export const ClinicalResultsScreen: React.FC = () => {
               </View>
             </View>
           </Card>
-
-          {/* Card 4: Collapsible Physician Narrative View */}
-          <Card variant="default" style={styles.sectionCard}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setShowRawNarrative(!showRawNarrative)}
-              style={styles.cardHeaderRow}
-            >
-              <View style={styles.iconTagRow}>
-                <Ionicons name="clipboard-outline" size={18} color={colors.primary} />
-                <Text style={styles.cardSectionTitle}>Full Physician Narrative</Text>
-              </View>
-              <Ionicons
-                name={showRawNarrative ? 'chevron-up-outline' : 'chevron-down-outline'}
-                size={18}
-                color={colors.primary}
-              />
-            </TouchableOpacity>
-
-            {showRawNarrative ? (
-              <View style={styles.narrativeContainer}>
-                <Text style={styles.narrativeCleanText}>
-                  {narrative || 'Structured narrative summary not generated.'}
-                </Text>
-              </View>
-            ) : (
-              <Text style={styles.narrativeCollapsedHint}>
-                Tap to expand full physician narrative & systemic review.
-              </Text>
-            )}
-
-            {conflicts.length > 0 ? (
-              <View style={styles.conflictsBox}>
-                <View style={styles.conflictsHeader}>
-                  <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
-                  <Text style={styles.conflictsTitle}>Documented Discrepancies Requiring Clarification:</Text>
-                </View>
-                {conflicts.map((conf, idx) => (
-                  <Text key={idx} style={styles.conflictText}>- {conf}</Text>
-                ))}
-              </View>
-            ) : null}
-          </Card>
         </View>
       ) : null}
 
@@ -494,7 +669,7 @@ export const ClinicalResultsScreen: React.FC = () => {
               <Text style={styles.questionsIntroTitle}>Questions for Your Doctor</Text>
             </View>
             <Text style={styles.questionsIntroDesc}>
-              These tailored clinical questions were synthesized from your reported symptoms to help you lead an informed discussion with your healthcare provider.
+              Tailored clinical questions synthesized from your reported symptoms to lead an informed discussion with your healthcare provider.
             </Text>
           </Card>
 
@@ -534,7 +709,7 @@ export const ClinicalResultsScreen: React.FC = () => {
         </View>
       ) : null}
 
-      {/* TAB 3: CARE PATHWAY & FACILITIES */}
+      {/* TAB 3: CARE PATHWAY & SPECIALIZED HOSPITAL DISCOVERY */}
       {activeTab === 'pathway' ? (
         <View style={styles.tabContent}>
           <Card variant="default" style={styles.sectionCard}>
@@ -548,55 +723,166 @@ export const ClinicalResultsScreen: React.FC = () => {
 
             <Text style={styles.pathwayDesc}>
               {careNav.navigation_explanation ||
-                `Based on clinical intake and risk stratification, an ${formatPathway(carePathway)} evaluation is recommended.`}
+                `Based on clinical intake and risk stratification, ${formatArticle(carePathway)} ${formatPathway(carePathway)} with a specialist in ${recommendedSpecialty} is recommended.`}
             </Text>
           </Card>
 
-          {matchedFacilities.length > 0 ? (
-            <View style={styles.facilitySection}>
-              <Text style={styles.subSectionTitle}>Matched Healthcare Facilities</Text>
-              {matchedFacilities.map((facMatch: any, idx: number) => {
-                const fac = facMatch.facility || {};
-                return (
-                  <Card key={idx} variant="outlined" style={styles.facilityCard}>
-                    <View style={styles.facilityHeader}>
-                      <Text style={styles.facilityName}>{fac.facility_name || 'Healthcare Facility'}</Text>
-                      <Badge
-                        label={`Match: ${facMatch.match_tier || 'Tier 1'}`}
-                        variant="success"
-                        size="sm"
-                      />
-                    </View>
-                    <Text style={styles.facilityType}>{fac.facility_type || 'Hospital / Clinic'}</Text>
-                    {fac.city ? (
-                      <Text style={styles.facilityCity}>Location: {fac.city}</Text>
-                    ) : null}
-                    {facMatch.match_summary ? (
-                      <Text style={styles.facilitySummary}>{facMatch.match_summary}</Text>
-                    ) : null}
-                  </Card>
-                );
-              })}
+          {/* Interactive Specialization-First Hospital Discovery Section */}
+          <Card variant="mintWash" style={styles.sectionCard}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.iconTagRow}>
+                <Ionicons name="business-outline" size={18} color={colors.primaryDark} />
+                <Text style={styles.cardSectionTitle}>Specialized Hospitals For My Issue</Text>
+              </View>
+              <Badge label={`Focus: ${recommendedSpecialty}`} variant="mint" size="sm" />
             </View>
-          ) : (
+
+            <Text style={styles.hospitalToolDesc}>
+              Locate verified hospitals equipped with specialized {recommendedSpecialty} facilities, diagnostic units, and emergency services prioritized for your condition.
+            </Text>
+
+            <Button
+              title={isLoadingFacilities ? "Finding Specialized Hospitals..." : "Find Specialized Hospitals Near Me"}
+              variant="primary"
+              onPress={handleLocateSpecializedHospitals}
+              disabled={isLoadingFacilities}
+              icon={<Ionicons name="locate-outline" size={18} color="#FFFFFF" />}
+              style={styles.locateBtn}
+            />
+
+            {isLoadingFacilities ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loadingText}>Analyzing regional healthcare centers specializing in {recommendedSpecialty}...</Text>
+              </View>
+            ) : null}
+          </Card>
+
+          {/* Matched Hospitals List */}
+          {facilityResults.length > 0 ? (
+            <View style={styles.facilitySection}>
+              <Text style={styles.subSectionTitle}>
+                Recommended Specialized Centers {facilitySearchLoc ? `(${facilitySearchLoc})` : ''}
+              </Text>
+              {facilityResults.map((fac: RecommendedFacility, idx: number) => (
+                <Card key={idx} variant="default" style={styles.facilityCard}>
+                  <View style={styles.facilityHeader}>
+                    <View style={{ flex: 1, marginRight: spacing.xs }}>
+                      <Text style={styles.facilityName}>{fac.facility_name}</Text>
+                      <Text style={styles.facilityType}>{fac.facility_type}</Text>
+                    </View>
+                    <Badge
+                      label={fac.tier}
+                      variant="mint"
+                      size="sm"
+                    />
+                  </View>
+
+                  <View style={styles.specialtyMatchBox}>
+                    <Ionicons name="medkit-outline" size={14} color={colors.primaryDark} />
+                    <Text style={styles.specialtyMatchText}>
+                      <Text style={{ fontWeight: 'bold' }}>Specialized Department:</Text> {fac.matched_specialty}
+                    </Text>
+                  </View>
+
+                  {fac.match_rationale ? (
+                    <Text style={styles.matchRationaleText}>{fac.match_rationale}</Text>
+                  ) : null}
+
+                  <View style={styles.facilityMetaRow}>
+                    <View style={styles.metaItem}>
+                      <Ionicons name="location-outline" size={13} color={colors.textSecondary} />
+                      <Text style={styles.metaText}>{fac.address} {fac.distance_km ? `(${fac.distance_km})` : ''}</Text>
+                    </View>
+                    <View style={styles.metaItem}>
+                      <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
+                      <Text style={styles.metaText}>{fac.timings}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.facilityActionsRow}>
+                    {fac.contact_phone ? (
+                      <TouchableOpacity
+                        style={styles.facilityActionBtn}
+                        onPress={() => Linking.openURL(`tel:${fac.contact_phone.replace(/[^0-9+]/g, '')}`)}
+                      >
+                        <Ionicons name="call-outline" size={15} color={colors.primary} />
+                        <Text style={styles.facilityActionText}>Call Hospital</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {fac.maps_url ? (
+                      <TouchableOpacity
+                        style={[styles.facilityActionBtn, styles.facilityMapBtn]}
+                        onPress={() => Linking.openURL(fac.maps_url)}
+                      >
+                        <Ionicons name="map-outline" size={15} color="#FFFFFF" />
+                        <Text style={[styles.facilityActionText, { color: '#FFFFFF' }]}>View on Map</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </Card>
+              ))}
+            </View>
+          ) : !isLoadingFacilities ? (
             <Card variant="outlined" style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No specific facility matches requested or available for this encounter.</Text>
+              <Text style={styles.emptyText}>Tap "Find Specialized Hospitals Near Me" above to get verified facilities equipped for your condition.</Text>
             </Card>
-          )}
+          ) : null}
         </View>
       ) : null}
 
-      {/* TAB 4: AYURVEDA SUPPORTIVE HOME CARE (CCRAS / API-II) */}
+      {/* TAB 4: AYURVEDA SUPPORTIVE HOME CARE & REMEDIES TAKEN */}
       {activeTab === 'remedies' ? (
         <View style={styles.tabContent}>
-          {/* Mandatory Non-Prescriptive Supportive Care Disclaimer */}
+          {/* Section 4A: Remedies Taken & Patient Outcomes (if any) */}
+          {remediesTracked.length > 0 ? (
+            <Card variant="default" style={styles.sectionCard}>
+              <View style={styles.cardHeaderRow}>
+                <View style={styles.iconTagRow}>
+                  <Ionicons name="checkmark-done-circle" size={20} color={colors.success} />
+                  <Text style={styles.cardSectionTitle}>Remedies Followed by Patient</Text>
+                </View>
+                <Badge label="Follow-up Tracking" variant="mint" size="sm" />
+              </View>
+
+              {remediesTracked.map((item: any, rIdx: number) => {
+                const name = typeof item === 'string' ? item : item.remedyName || item.remedy;
+                const status = typeof item === 'object' ? item.status : 'taken';
+                const relief = typeof item === 'object' ? item.reliefReported : null;
+                const feedback = typeof item === 'object' ? item.patientFeedback : null;
+
+                return (
+                  <View key={rIdx} style={styles.trackedRemedyBox}>
+                    <View style={styles.trackedRemedyHeader}>
+                      <Text style={styles.trackedRemedyName}>{name}</Text>
+                      {relief ? (
+                        <Badge
+                          label={relief.replace(/_/g, ' ').toUpperCase()}
+                          variant={relief === 'significant_relief' || relief === 'partial_relief' ? 'success' : relief === 'worsened' ? 'error' : 'neutral'}
+                          size="sm"
+                        />
+                      ) : (
+                        <Badge label="TAKEN" variant="success" size="sm" />
+                      )}
+                    </View>
+                    {feedback ? (
+                      <Text style={styles.trackedRemedyFeedback}>Patient feedback: "{feedback}"</Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </Card>
+          ) : null}
+
+          {/* Section 4B: Approved Statutory Supportive Home Care */}
           <Card variant="mintWash" style={styles.remedyDisclaimerCard}>
             <View style={styles.iconTagRow}>
               <Ionicons name="shield-checkmark" size={18} color={colors.primaryDark} />
-              <Text style={styles.remedyDisclaimerTitle}>Approved Supportive Home Care</Text>
+              <Text style={styles.remedyDisclaimerTitle}>Approved Supportive Home Care (CCRAS)</Text>
             </View>
             <Text style={styles.remedyDisclaimerText}>
-              Traditional supportive-care reference from the approved VaidyaArc source dataset. Not a medical prescription. Follow clinician advice, especially for persistent, worsening, or severe symptoms.
+              Traditional supportive care reference from the approved VaidyaArc statutory dataset (CCRAS / API Part II). Not a medical prescription. If symptoms persist or worsen, direct physician consultation is required.
             </Text>
           </Card>
 
@@ -611,7 +897,7 @@ export const ClinicalResultsScreen: React.FC = () => {
                         {rec.name || rec.remedy_name || rec.classical_name || 'Ayurvedic Home Remedy'}
                       </Text>
                       {rec.classical_name && rec.classical_name !== (rec.name || rec.remedy_name) ? (
-                        <Text style={styles.remedyClassical}>Classical name: {rec.classical_name}</Text>
+                        <Text style={styles.remedyClassical}>Classical formulation: {rec.classical_name}</Text>
                       ) : null}
                     </View>
                     <Badge
@@ -655,7 +941,7 @@ export const ClinicalResultsScreen: React.FC = () => {
                     <View style={styles.provenanceRow}>
                       <Ionicons name="book-outline" size={13} color={colors.textSecondary} />
                       <Text style={styles.provenanceText}>
-                        Source: {prov.document_title}
+                        Verified Source: {prov.document_title}
                         {prov.page ? `, Page ${prov.page}` : ''}
                         {prov.publisher ? ` (${prov.publisher})` : ''}
                       </Text>
@@ -667,12 +953,12 @@ export const ClinicalResultsScreen: React.FC = () => {
           ) : (
             <Card variant="outlined" style={styles.emptyCard}>
               <Ionicons name="shield-checkmark-outline" size={32} color={colors.primary} style={{ marginBottom: 8 }} />
-              <Text style={styles.emptyTitle}>No Eligible Ayurveda Recommendation Identified</Text>
+              <Text style={styles.emptyTitle}>No Self-Administered Home Remedies Recommended</Text>
               <Text style={styles.emptyText}>
                 {recSummary ||
                   (blockedReasons.length > 0
                     ? blockedReasons.join(' ')
-                    : 'No matching indication in approved reference documents, or clinical safety criteria recommend physician evaluation without self-administered remedies.')}
+                    : 'Clinical safety protocols recommend direct physician examination without self-administered home therapies for this presentation.')}
               </Text>
             </Card>
           )}
@@ -692,7 +978,7 @@ export const ClinicalResultsScreen: React.FC = () => {
             </View>
 
             <Text style={styles.ayurNotice}>
-              Classical 10-parameter Ayurvedic clinical examination framework. Individual parameters without direct clinical observations remain explicitly not assessed.
+              Classical 10-parameter Ayurvedic clinical assessment. Conversational indicators and baseline profile metrics are dynamically extracted; anatomical parameters requiring in-person palpation remain strictly identified.
             </Text>
 
             <View style={styles.dashavidhaList}>
@@ -719,7 +1005,7 @@ export const ClinicalResultsScreen: React.FC = () => {
                     </View>
                     <Text style={styles.paramDesc}>{param.desc}</Text>
 
-                    {/* Structured Findings (e.g. classical life stage, modern vitals, dietary habits) */}
+                    {/* Structured Findings */}
                     {param.key === 'vaya' && structFindings?.classical_life_stage ? (
                       <View style={styles.structuredBox}>
                         <Text style={styles.structuredLabel}>Classical Life Stage (Charaka Vimāna 8/122):</Text>
@@ -729,7 +1015,7 @@ export const ClinicalResultsScreen: React.FC = () => {
 
                     {param.key === 'pramana' && structFindings?.modern_measurements ? (
                       <View style={styles.structuredBox}>
-                        <Text style={styles.structuredLabel}>Modern Clinical Measurements (Objective Data):</Text>
+                        <Text style={styles.structuredLabel}>Objective Clinical Measurements:</Text>
                         {Object.entries(structFindings.modern_measurements).map(([k, v]) => (
                           <Text key={k} style={styles.structuredItem}>• {k.toUpperCase()}: {String(v)}</Text>
                         ))}
@@ -746,7 +1032,7 @@ export const ClinicalResultsScreen: React.FC = () => {
                         ) : null}
                         {structFindings.reported_allergies && Array.isArray(structFindings.reported_allergies) ? (
                           <View style={styles.structuredBox}>
-                            <Text style={styles.structuredLabel}>Reported Allergies/Intolerances:</Text>
+                            <Text style={styles.structuredLabel}>Documented Allergies/Tolerances:</Text>
                             <Text style={styles.structuredVal}>{structFindings.reported_allergies.join(', ')}</Text>
                           </View>
                         ) : null}
@@ -756,7 +1042,7 @@ export const ClinicalResultsScreen: React.FC = () => {
                     {/* Descriptive Observations */}
                     {observations.length > 0 ? (
                       <View style={styles.obsBox}>
-                        <Text style={styles.obsHeading}>Descriptive Clinical Observations (Non-Diagnostic):</Text>
+                        <Text style={styles.obsHeading}>Extracted Clinical Observations:</Text>
                         {observations.map((obs, oIdx) => (
                           <Text key={oIdx} style={styles.obsItem}>• {obs}</Text>
                         ))}
@@ -774,7 +1060,7 @@ export const ClinicalResultsScreen: React.FC = () => {
                       </Text>
                     ) : null}
 
-                    {/* Limitations & Clinical Boundaries */}
+                    {/* Limitations */}
                     {limitations.length > 0 ? (
                       <View style={styles.limitationsBox}>
                         {limitations.map((lim, lIdx) => (
@@ -844,7 +1130,7 @@ const styles = StyleSheet.create({
   flagItem: {
     fontSize: typography.fontSize.xs,
     color: '#FFFFFF',
-    fontWeight: typography.fontWeight.semiBold,
+    marginVertical: 1,
   },
   triageBanner: {
     marginBottom: spacing.md,
@@ -923,20 +1209,33 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     textAlign: 'center',
   },
-  tabScroll: {
+  tabContainer: {
     marginBottom: spacing.md,
+  },
+  tabScroll: {
+    flexGrow: 0,
+    maxHeight: 46,
+  },
+  tabScrollContent: {
+    alignItems: 'center',
   },
   tabBar: {
     flexDirection: 'row',
     backgroundColor: colors.surfaceSubtle,
     borderRadius: borderRadius.sm,
     padding: 3,
+    alignItems: 'center',
+    height: 42,
   },
   tabBtn: {
-    paddingVertical: spacing.xs + 2,
-    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm + 4,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: borderRadius.sm - 2,
+    height: 36,
+    marginRight: 4,
+    backgroundColor: colors.surfaceSubtle,
   },
   tabBtnActive: {
     backgroundColor: colors.surface,
@@ -985,6 +1284,39 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginTop: spacing.xs,
   },
+  highlightProblemCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.06)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderWidth: 1.5,
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  highlightProblemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  highlightProblemTag: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.error,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  highlightProblemText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    lineHeight: typography.lineHeight.sm,
+  },
+  highlightProblemSub: {
+    fontSize: typography.fontSize.xs - 2,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
   hpiTable: {
     backgroundColor: colors.surfaceSubtle,
     borderRadius: borderRadius.sm,
@@ -1012,42 +1344,58 @@ const styles = StyleSheet.create({
     flex: 1.5,
     textAlign: 'right',
   },
-  historyList: {
-    gap: spacing.xs,
+  soapContainer: {
+    gap: spacing.xs + 2,
+    marginTop: spacing.xs,
   },
-  historyItem: {
+  soapSection: {
+    backgroundColor: colors.surfaceSubtle,
+    borderLeftWidth: 4,
+    borderRadius: borderRadius.sm - 2,
+    padding: spacing.xs + 3,
+  },
+  soapSectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 2,
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
   },
-  historyItemLabel: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    fontWeight: typography.fontWeight.medium,
+  soapSectionTitle: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryDark,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  historyItemVal: {
+  soapText: {
     fontSize: typography.fontSize.xs,
     color: colors.textPrimary,
+    lineHeight: typography.lineHeight.xs + 3,
+  },
+  rawNarrativeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+    marginTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSubtle,
+  },
+  rawNarrativeToggleText: {
+    fontSize: typography.fontSize.xs - 1,
+    color: colors.textSecondary,
     fontWeight: typography.fontWeight.semiBold,
-    maxWidth: '60%',
-    textAlign: 'right',
   },
   narrativeContainer: {
     marginTop: spacing.xs,
   },
   narrativeCleanText: {
-    fontSize: typography.fontSize.xs,
+    fontSize: typography.fontSize.xs - 1,
     color: colors.textPrimary,
-    lineHeight: typography.lineHeight.xs + 5,
+    lineHeight: typography.lineHeight.xs + 4,
     backgroundColor: colors.surfaceSubtle,
     padding: spacing.sm,
     borderRadius: borderRadius.sm,
-  },
-  narrativeCollapsedHint: {
-    fontSize: typography.fontSize.xs - 1,
-    color: colors.textMuted,
-    fontStyle: 'italic',
-    marginTop: spacing.xs,
   },
   conflictsBox: {
     marginTop: spacing.md,
@@ -1072,6 +1420,26 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs - 1,
     color: colors.textPrimary,
     marginTop: 2,
+  },
+  historyList: {
+    gap: spacing.xs,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  historyItemLabel: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeight.medium,
+  },
+  historyItemVal: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textPrimary,
+    fontWeight: typography.fontWeight.semiBold,
+    maxWidth: '60%',
+    textAlign: 'right',
   },
   questionsIntroCard: {
     marginBottom: spacing.xs,
@@ -1117,8 +1485,29 @@ const styles = StyleSheet.create({
   pathwayDesc: {
     fontSize: typography.fontSize.xs,
     color: colors.textPrimary,
-    lineHeight: typography.lineHeight.xs,
+    lineHeight: typography.lineHeight.xs + 2,
     marginTop: spacing.xs,
+  },
+  hospitalToolDesc: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    lineHeight: typography.lineHeight.xs + 1,
+    marginBottom: spacing.sm,
+  },
+  locateBtn: {
+    marginTop: spacing.xs,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: spacing.sm,
+    padding: spacing.xs,
+  },
+  loadingText: {
+    fontSize: typography.fontSize.xs - 1,
+    color: colors.primary,
+    flex: 1,
   },
   facilitySection: {
     marginTop: spacing.xs,
@@ -1130,14 +1519,17 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    marginBottom: spacing.xs,
   },
   facilityCard: {
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(10, 77, 82, 0.12)',
   },
   facilityHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   facilityName: {
     fontSize: typography.fontSize.sm,
@@ -1149,14 +1541,89 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginTop: 2,
   },
-  facilityCity: {
-    fontSize: typography.fontSize.xs - 2,
-    color: colors.textSecondary,
-    marginTop: 2,
+  specialtyMatchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(10, 77, 82, 0.06)',
+    padding: spacing.xs,
+    borderRadius: borderRadius.sm - 2,
+    marginTop: spacing.xs,
   },
-  facilitySummary: {
+  specialtyMatchText: {
+    fontSize: typography.fontSize.xs - 1,
+    color: colors.primaryDark,
+    flex: 1,
+  },
+  matchRationaleText: {
     fontSize: typography.fontSize.xs - 1,
     color: colors.textSecondary,
+    lineHeight: typography.lineHeight.xs,
+    marginTop: spacing.xs,
+  },
+  facilityMetaRow: {
+    gap: 3,
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSubtle,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaText: {
+    fontSize: typography.fontSize.xs - 2,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  facilityActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  facilityActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  facilityMapBtn: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  facilityActionText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+  },
+  trackedRemedyBox: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.sm,
+    padding: spacing.xs + 3,
+    marginBottom: spacing.xs,
+  },
+  trackedRemedyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  trackedRemedyName: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryDark,
+  },
+  trackedRemedyFeedback: {
+    fontSize: typography.fontSize.xs - 1,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
     marginTop: 4,
   },
   remedyDisclaimerCard: {

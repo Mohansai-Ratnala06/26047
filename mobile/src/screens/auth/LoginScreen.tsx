@@ -4,12 +4,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Header, Input, Button, Card, ErrorState } from '../../components';
 import { colors, spacing, typography } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
+import { useTranslation } from '../../i18n';
 
 export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const { login, loading, error, clearError } = useAuthStore();
+  const { t } = useTranslation();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
@@ -36,8 +38,8 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   return (
     <ScreenContainer scrollable>
       <Header
-        title="Welcome Back"
-        subtitle="Sign in to your Vaidyaarc account"
+        title={t('auth.signInTitle')}
+        subtitle={t('auth.signInSubtitle')}
         onBack={() => navigation.goBack()}
       />
 
@@ -52,7 +54,7 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         ) : null}
 
         <Input
-          label="Phone Number"
+          label={t('auth.phoneOrEmailLabel')}
           placeholder="e.g. +91 98765 43210"
           value={identifier}
           onChangeText={setIdentifier}
@@ -62,7 +64,7 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         />
 
         <Input
-          label="Password"
+          label={t('auth.passwordLabel')}
           placeholder="Enter your account password"
           value={password}
           onChangeText={setPassword}
@@ -76,7 +78,7 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         />
 
         <Button
-          title="Sign In"
+          title={t('auth.signInBtn')}
           size="lg"
           onPress={handleLogin}
           loading={loading}
@@ -85,9 +87,9 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         />
 
         <View style={styles.footerRow}>
-          <Text style={styles.footerText}>Don't have an account?</Text>
+          <Text style={styles.footerText}>{t('auth.dontHaveAccount')}</Text>
           <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-            <Text style={styles.footerLink}> Create One</Text>
+            <Text style={styles.footerLink}> {t('auth.createAccountBtn')}</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>

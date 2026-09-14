@@ -12,6 +12,7 @@ import assessmentRoutes from '../assessment.routes';
 import doctorRoutes from '../doctor.routes';
 import sttRoutes from '../stt.routes';
 import ttsRoutes from '../tts.routes';
+import facilityRoutes from '../facility.routes';
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use('/assessments', assessmentRoutes);
 router.use('/doctor', doctorRoutes);
 router.use('/stt', sttRoutes);
 router.use('/tts', ttsRoutes);
+router.use('/facilities', facilityRoutes);
 
 export default router;

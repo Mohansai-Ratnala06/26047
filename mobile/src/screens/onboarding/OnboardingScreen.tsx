@@ -4,11 +4,13 @@ import { ScreenContainer, Header, Input, Button, SelectableCard } from '../../co
 import { colors, spacing, typography } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
 import { profileService, OnboardingData } from '../../services/profile';
+import { useTranslation } from '../../i18n';
 
 const TOTAL_STEPS = 7;
 
 export const OnboardingScreen: React.FC = () => {
   const { user, completeOnboarding } = useAuthStore();
+  const { t } = useTranslation();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
@@ -206,7 +208,10 @@ export const OnboardingScreen: React.FC = () => {
 
   return (
     <View style={styles.root}>
-      <Header title="Profile Setup" subtitle="Personalize your Vaidyaarc experience" />
+      <Header
+        title={t('profile.title')}
+        subtitle={t('profile.subtitle')}
+      />
       {renderStepIndicator()}
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Animated.View style={{ opacity: fadeAnim }}>
@@ -216,14 +221,14 @@ export const OnboardingScreen: React.FC = () => {
 
       <View style={styles.footer}>
         <TouchableOpacity style={styles.skipBtn} onPress={handleSkip}>
-          <Text style={styles.skipText}>Skip for now</Text>
+          <Text style={styles.skipText}>{t('common.cancel')}</Text>
         </TouchableOpacity>
         <View style={styles.navRow}>
           {step > 1 ? (
-            <Button title="Back" variant="secondary" onPress={handleBack} style={styles.navBtn} />
+            <Button title={t('common.back')} variant="secondary" onPress={handleBack} style={styles.navBtn} />
           ) : <View style={styles.navBtn} />}
           <Button
-            title={step === TOTAL_STEPS ? 'Finish' : 'Continue'}
+            title={step === TOTAL_STEPS ? t('common.done') : t('common.save')}
             onPress={handleNext}
             loading={loading}
             style={styles.navBtn}
