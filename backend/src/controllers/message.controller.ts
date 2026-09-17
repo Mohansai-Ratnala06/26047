@@ -236,7 +236,7 @@ export const sendMessage = async (req: Request, res: Response) => {
     if (turnResponse.confirm_start_new_episode && turnResponse.detected_new_complaint) {
       try {
         const { generateCode } = await import('../utils/codeGenerator');
-        const newEpCode = await generateCode('EP');
+        const newEpCode = await generateCode('EP', patientId);
         const newEpisode = new Episode({
           patientId,
           episodeCode: newEpCode,

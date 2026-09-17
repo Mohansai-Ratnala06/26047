@@ -193,9 +193,24 @@ export const DocumentUploadWorkflowModal: React.FC<DocumentUploadWorkflowModalPr
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        setFileUri(asset.uri);
-        setFileName(asset.fileName || `record_${Date.now()}.jpg`);
-        setFileType(asset.mimeType || 'image/jpeg');
+        let finalUri = asset.uri;
+        let finalName = asset.fileName || `record_${Date.now()}.jpg`;
+        let finalType = asset.mimeType || 'image/jpeg';
+
+        try {
+          const optimized = await manipulateAsync(
+            asset.uri,
+            [{ resize: { width: 1600 } }],
+            { compress: 0.8, format: SaveFormat.JPEG }
+          );
+          finalUri = optimized.uri;
+        } catch (e) {
+          console.warn('Optimization skipped:', e);
+        }
+
+        setFileUri(finalUri);
+        setFileName(finalName);
+        setFileType(finalType);
       }
     } catch (err: any) {
       Alert.alert('Camera Error', err.message || 'Unable to open camera');
@@ -218,9 +233,24 @@ export const DocumentUploadWorkflowModal: React.FC<DocumentUploadWorkflowModalPr
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        setFileUri(asset.uri);
-        setFileName(asset.fileName || `record_${Date.now()}.jpg`);
-        setFileType(asset.mimeType || 'image/jpeg');
+        let finalUri = asset.uri;
+        let finalName = asset.fileName || `record_${Date.now()}.jpg`;
+        let finalType = asset.mimeType || 'image/jpeg';
+
+        try {
+          const optimized = await manipulateAsync(
+            asset.uri,
+            [{ resize: { width: 1600 } }],
+            { compress: 0.8, format: SaveFormat.JPEG }
+          );
+          finalUri = optimized.uri;
+        } catch (e) {
+          console.warn('Optimization skipped:', e);
+        }
+
+        setFileUri(finalUri);
+        setFileName(finalName);
+        setFileType(finalType);
       }
     } catch (err: any) {
       Alert.alert('Gallery Error', err.message || 'Unable to open gallery');
@@ -303,10 +333,24 @@ export const DocumentUploadWorkflowModal: React.FC<DocumentUploadWorkflowModalPr
         setAnalysisStatusText('Extracting smart metadata & clinical observations...');
       }, 3500);
 
+      let uploadUri = fileUri;
+      if (!fileType.includes('pdf')) {
+        try {
+          const optimized = await manipulateAsync(
+            fileUri,
+            [{ resize: { width: 1600 } }],
+            { compress: 0.8, format: SaveFormat.JPEG }
+          );
+          uploadUri = optimized.uri;
+        } catch (manipErr) {
+          console.warn('Image pre-upload optimization skipped:', manipErr);
+        }
+      }
+
       const response = await documentApi.uploadDocument({
-        uri: fileUri,
+        uri: uploadUri,
         name: fileName || `doc_${Date.now()}.jpg`,
-        type: fileType,
+        type: fileType.includes('pdf') ? fileType : 'image/jpeg',
         documentType: apiType,
         hospital: 'Self Uploaded',
         episodeId: defaultEpisodeId,

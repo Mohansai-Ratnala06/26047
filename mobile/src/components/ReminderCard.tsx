@@ -13,6 +13,9 @@ export interface ReminderCardProps {
   category: string;
   status?: 'pending' | 'completed';
   statusLabel?: string;
+  badgeVariant?: 'mint' | 'success' | 'warning' | 'error' | 'neutral';
+  iconName?: keyof typeof Ionicons.glyphMap;
+  iconColor?: string;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
 }
@@ -23,20 +26,26 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
   category,
   status = 'pending',
   statusLabel,
+  badgeVariant,
+  iconName,
+  iconColor,
   onPress,
   style,
 }) => {
   const { t } = useTranslation();
   const badgeLabel = statusLabel || (status === 'completed' ? t('common.done') : t('common.upcoming'));
+  const effectiveVariant = badgeVariant || (status === 'completed' ? 'success' : 'mint');
+  const effectiveIconName = iconName || (status === 'completed' ? 'checkmark-circle' : 'time-outline');
+  const effectiveIconColor = iconColor || (status === 'completed' ? colors.success : colors.primary);
 
   return (
     <Card onPress={onPress} style={[styles.card, style]}>
       <View style={styles.row}>
         <View style={styles.iconCircle}>
           <Ionicons
-            name={status === 'completed' ? 'checkmark-circle' : 'time-outline'}
+            name={effectiveIconName}
             size={20}
-            color={status === 'completed' ? colors.success : colors.primary}
+            color={effectiveIconColor}
           />
         </View>
         <View style={styles.textCol}>
@@ -47,7 +56,7 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
         </View>
         <Badge
           label={badgeLabel}
-          variant={status === 'completed' ? 'success' : 'mint'}
+          variant={effectiveVariant}
           size="sm"
         />
       </View>

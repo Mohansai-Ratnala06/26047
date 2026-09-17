@@ -347,7 +347,7 @@ export const SmartReportView: React.FC<SmartReportViewProps> = ({
               </View>
             ))
           ) : (
-            <Text style={styles.emptyAccordionText}>No specific doctor advice recorded.</Text>
+            <Text style={styles.emptyAccordionText}>No specific advice recorded.</Text>
           )}
         </AccordionSection>
       </View>

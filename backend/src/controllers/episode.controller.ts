@@ -3,6 +3,7 @@ import Episode from '../models/Episode';
 import { generateCode } from '../utils/codeGenerator';
 import { ApiResponse } from '../types';
 import { resolvePatientId } from '../middleware/patientResolver';
+import { deleteEpisodeAndAssociatedData } from '../services/episodeDeletion.service';
 
 
 export const createEpisode = async (req: Request, res: Response) => {
@@ -16,7 +17,7 @@ export const createEpisode = async (req: Request, res: Response) => {
     }
 
     const { chiefComplaint, type, symptoms, doctorId, patientConsent } = req.body;
-    const episodeCode = await generateCode('EP');
+    const episodeCode = await generateCode('EP', patientId);
 
     const episode = new Episode({
       patientId,
@@ -141,6 +142,7 @@ export const getEpisodes = async (req: Request, res: Response) => {
       // Chronological sort: newest episode first
       const episodes = await Episode.find({ patientId })
         .populate('doctorId', 'name email department room')
+        .populate('patientId', 'demographics contact')
         .sort({ startedAt: -1, createdAt: -1 });
 
       const episodeIds = episodes.map((e) => e._id);
@@ -233,12 +235,29 @@ export const getEpisodes = async (req: Request, res: Response) => {
         const epRxs = rxMap.get(epIdStr) || [];
         const epLabs = labMap.get(epIdStr) || [];
 
-        const hasAiSummary = epConvs.some(
-          (c) => c.clinicalOutput && Object.keys(c.clinicalOutput).length > 0
+        const isAiPreConsultNotes = Boolean(
+          ep.clinicalNotes && ep.clinicalNotes.includes('[PRE-CONSULTATION SUMMARY')
         );
+
+        const hasAiSummary =
+          epConvs.some(
+            (c) => c.clinicalOutput && Object.keys(c.clinicalOutput).length > 0
+          ) ||
+          Boolean(ep.clinicalOutput) ||
+          isAiPreConsultNotes;
         const hasRecords = epDocs.length > 0;
+
+        // A doctor consultation exists ONLY if a real physician was involved:
+        // 1. Physician assessments exist (epAsms.length > 0)
+        // 2. OR a doctor is assigned (ep.doctorId) AND clinical notes are present from that doctor (not AI pre-consult notes)
+        //    or the episode reached closed/consultation status with that doctor.
+        // Pure AI pre-consultations without a physician must NOT be treated as a doctor consultation.
+        const hasDoctor = Boolean(ep.doctorId);
+        const hasPhysicianAssessment = epAsms.length > 0;
+        const hasDoctorNotes = Boolean(ep.clinicalNotes) && !isAiPreConsultNotes;
+
         const hasConsultation =
-          epAsms.length > 0 || Boolean(ep.clinicalNotes) || Boolean(ep.doctorId);
+          hasPhysicianAssessment || (hasDoctor && (hasDoctorNotes || ep.status === 'closed'));
         const hasDocuments = epDocs.some((d) =>
           ['discharge_summary', 'imaging', 'other', 'consultation_note'].includes(d.documentType)
         );
@@ -381,11 +400,46 @@ export const getEpisodeById = async (req: Request, res: Response) => {
       ]);
 
     const resolved = resolvePatientChiefComplaint(episode.toObject(), conversations, documents);
+
+    const isAiPreConsultNotes = Boolean(
+      episode.clinicalNotes && episode.clinicalNotes.includes('[PRE-CONSULTATION SUMMARY')
+    );
+    const hasAiSummary =
+      conversations.some(
+        (c: any) => c.clinicalOutput && Object.keys(c.clinicalOutput).length > 0
+      ) ||
+      Boolean((episode as any).clinicalOutput) ||
+      isAiPreConsultNotes;
+    const hasDoctor = Boolean(episode.doctorId);
+    const hasPhysicianAssessment = assessments.length > 0;
+    const hasDoctorNotes = Boolean(episode.clinicalNotes) && !isAiPreConsultNotes;
+    const hasConsultation =
+      hasPhysicianAssessment || (hasDoctor && (hasDoctorNotes || episode.status === 'closed'));
+
     const detailedData = {
       ...episode.toObject(),
       episodeId: episode._id,
       chiefComplaint: resolved.chiefComplaint,
       duration: resolved.duration,
+      availableData: {
+        aiSummary: hasAiSummary,
+        records: documents.length > 0,
+        consents: consents.length > 0,
+        consultation: hasConsultation,
+        documents: documents.length > 0,
+        investigations: labResults.length > 0,
+        prescriptions: prescriptions.length > 0,
+        vitals: documents.some((d: any) => d.extractedData?.vitals && d.extractedData.vitals.length > 0),
+      },
+      counts: {
+        records: documents.length,
+        documents: documents.length,
+        prescriptions: prescriptions.length,
+        investigations: labResults.length,
+        consents: consents.length,
+        conversations: conversations.length,
+        assessments: assessments.length,
+      },
       conversations,
       documents,
       assessments,
@@ -437,5 +491,27 @@ export const updateEpisode = async (req: Request, res: Response) => {
   } catch (error: any) {
     const response: ApiResponse = { success: false, message: error.message };
     res.status(500).json(response);
+  }
+};
+
+export const deleteEpisode = async (req: Request, res: Response) => {
+  try {
+    const { episodeId } = req.params;
+    const userId = (req as any).user.id;
+    const role = (req as any).user.role;
+
+    let patientId: any = null;
+    if (role === 'patient') {
+      patientId = await resolvePatientId(userId);
+      if (!patientId) {
+        return res.status(404).json({ success: false, message: 'Patient profile not found' });
+      }
+    }
+
+    const result = await deleteEpisodeAndAssociatedData(episodeId, patientId, role, userId);
+    return res.status(200).json(result);
+  } catch (error: any) {
+    const statusCode = error.message.includes('Unauthorized') ? 403 : error.message.includes('not found') ? 404 : 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
   }
 };

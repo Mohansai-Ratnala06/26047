@@ -16,7 +16,7 @@ export const createConsent = async (req: Request, res: Response) => {
     }
 
     const { grantedTo, purpose, scope, expiresAt } = req.body;
-    const consentCode = await generateCode('CON');
+    const consentCode = await generateCode('CON', patientId);
 
     const consent = new Consent({
       patientId,

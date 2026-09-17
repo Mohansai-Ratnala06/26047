@@ -376,8 +376,8 @@ export class VisionExtractorAgent {
       },
     };
 
-    // Use gemini-3.6-flash — confirmed available and working with this API key
-    const models = ['gemini-3.6-flash', 'gemini-3.5-flash'];
+    // Use modern active Gemini vision models (3.5-flash-lite is fastest for multimodal OCR)
+    const models = ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
     let extractedClinicalData: ExtractedClinicalData | null = null;
     let lastError: string | null = null;
 

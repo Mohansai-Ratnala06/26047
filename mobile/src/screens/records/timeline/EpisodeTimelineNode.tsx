@@ -176,14 +176,23 @@ export const EpisodeTimelineNode: React.FC<EpisodeTimelineNodeProps> = ({
     return parts.length > 0 ? parts.join(' • ') : null;
   }, [episode.duration, episode.symptoms, displayChiefComplaint]);
 
+  const isAiPreConsult = Boolean(
+    episode.availableData?.aiSummary ||
+    episode.clinicalOutput ||
+    (episode.clinicalNotes && episode.clinicalNotes.includes('[PRE-CONSULTATION SUMMARY'))
+  );
+
   const available = episode.availableData || {
-    aiSummary: false,
-    records: false,
-    consents: false,
-    consultation: Boolean(episode.clinicalNotes || doctorName),
-    documents: false,
-    investigations: false,
-    prescriptions: false,
+    aiSummary: isAiPreConsult,
+    records: Boolean(episode.counts?.records && episode.counts.records > 0),
+    consents: Boolean(episode.counts?.consents && episode.counts.consents > 0),
+    consultation: Boolean(
+      (doctorName || (episode.counts?.assessments && episode.counts.assessments > 0)) &&
+      (!isAiPreConsult || Boolean(doctorName))
+    ),
+    documents: Boolean(episode.counts?.documents && episode.counts.documents > 0),
+    investigations: Boolean(episode.counts?.investigations && episode.counts.investigations > 0),
+    prescriptions: Boolean(episode.counts?.prescriptions && episode.counts.prescriptions > 0),
     vitals: false,
   };
 
@@ -200,7 +209,7 @@ export const EpisodeTimelineNode: React.FC<EpisodeTimelineNodeProps> = ({
     const items: ActionDatapoint[] = [];
 
     // 1. AI Pre-Consultation
-    if (available.aiSummary) {
+    if (available.aiSummary || isAiPreConsult) {
       items.push({
         id: 'ai-summary',
         type: 'ai',
@@ -214,8 +223,13 @@ export const EpisodeTimelineNode: React.FC<EpisodeTimelineNodeProps> = ({
       });
     }
 
-    // 2. Doctor Consultation
-    if (available.consultation) {
+    // 2. Doctor Consultation (ONLY when a genuine physician consultation was conducted)
+    // Do NOT show doctor consultation if it was purely an AI pre-consultation report, and do not duplicate.
+    const isRealDoctorConsultation =
+      available.consultation &&
+      (Boolean(doctorName) || (episode.counts?.assessments && episode.counts.assessments > 0));
+
+    if (isRealDoctorConsultation) {
       items.push({
         id: 'consultation',
         type: 'consultation',
@@ -305,7 +319,7 @@ export const EpisodeTimelineNode: React.FC<EpisodeTimelineNodeProps> = ({
     }
 
     return items;
-  }, [available, counts, episode, onOpenAiSummary, onOpenRecords, onOpenConsents, onOpenConsultation, doctorName]);
+  }, [available, counts, episode, onOpenAiSummary, onOpenRecords, onOpenConsents, onOpenConsultation, doctorName, isAiPreConsult]);
 
   // Group actions into left/right rows
   const actionRows = useMemo(() => {

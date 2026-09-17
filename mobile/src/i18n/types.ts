@@ -73,10 +73,17 @@ export interface TranslationSchema {
     speakWithAi: string;
     aiSubtitle: string;
     todaysReminders: string;
-    morningVitalsTitle: string;
-    morningVitalsCategory: string;
-    checkRecordsTitle: string;
-    checkRecordsCategory: string;
+    morningVitalsTitle?: string;
+    morningVitalsCategory?: string;
+    checkRecordsTitle?: string;
+    checkRecordsCategory?: string;
+    updateProfileTitle: string;
+    updateProfileCategory: string;
+    uploadDocumentsTitle: string;
+    uploadDocumentsCategory: string;
+    govtSchemesTitle: string;
+    govtSchemesSubtitle: string;
+    visitOfficialPortal: string;
   };
   records: {
     myRecordsTitle: string;

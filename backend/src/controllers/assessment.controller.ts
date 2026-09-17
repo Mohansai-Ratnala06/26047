@@ -25,7 +25,7 @@ export const createAssessment = async (req: Request, res: Response) => {
       return res.status(404).json(response);
     }
 
-    const assessmentCode = await generateCode('ASM');
+    const assessmentCode = await generateCode('ASM', patientId);
     const assessment = new Assessment({
       assessmentCode,
       patientId,

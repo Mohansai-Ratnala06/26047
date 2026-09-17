@@ -11,6 +11,7 @@ import { ApiResponse } from '../types';
 import { visionExtractorAgent, ExtractedClinicalData } from '../agents/VisionExtractorAgent';
 import { brainModelAgent } from '../agents/BrainModelAgent';
 import { resolvePatientId } from '../middleware/patientResolver';
+import { deleteEpisodeAndAssociatedData } from '../services/episodeDeletion.service';
 
 // Persistent storage directory for medical documents
 const storageDir = path.join(process.cwd(), 'uploads', 'documents');
@@ -136,7 +137,7 @@ export const createDocument = async (req: Request, res: Response) => {
     }
 
     const { episodeId, documentType, source, storage } = req.body;
-    const documentCode = await generateCode('DOC');
+    const documentCode = await generateCode('DOC', patientId);
 
     const document = new MedicalDocument({
       documentCode,
@@ -217,7 +218,13 @@ export const getDocumentById = async (req: Request, res: Response) => {
     }
 
     const { documentId } = req.params;
-    const document = await MedicalDocument.findOne({ _id: documentId, patientId });
+    let document: any = null;
+    if (mongoose.Types.ObjectId.isValid(documentId)) {
+      document = await MedicalDocument.findOne({ _id: documentId, patientId });
+    }
+    if (!document) {
+      document = await MedicalDocument.findOne({ documentCode: documentId, patientId });
+    }
 
     if (!document) {
       return res.status(404).json({ success: false, message: 'Document not found' });
@@ -239,7 +246,13 @@ export const getDocumentFile = async (req: Request, res: Response) => {
     }
 
     const { documentId } = req.params;
-    const document = await MedicalDocument.findById(documentId);
+    let document: any = null;
+    if (mongoose.Types.ObjectId.isValid(documentId)) {
+      document = await MedicalDocument.findById(documentId);
+    }
+    if (!document) {
+      document = await MedicalDocument.findOne({ documentCode: documentId });
+    }
 
     if (!document) {
       return res.status(404).json({ success: false, message: 'Document not found' });
@@ -304,7 +317,23 @@ export const deleteDocument = async (req: Request, res: Response) => {
     }
 
     if (!document) {
-      return res.status(404).json({ success: false, message: 'Document not found' });
+      // Check if documentId is actually an episode (e.g. EP-000005 or an Episode ObjectId)
+      try {
+        const episodeResult = await deleteEpisodeAndAssociatedData(
+          documentId,
+          patientId,
+          (req as any).user.role,
+          userId
+        );
+        return res.status(200).json(episodeResult);
+      } catch (epError: any) {
+        if (!epError.message.includes('not found')) {
+          const statusCode = epError.message.includes('Unauthorized') ? 403 : 500;
+          return res.status(statusCode).json({ success: false, message: epError.message });
+        }
+      }
+
+      return res.status(404).json({ success: false, message: 'Document or record not found' });
     }
 
     // Verify patient authorization
@@ -408,7 +437,7 @@ export const uploadDocument = async (req: Request, res: Response) => {
     }
 
     const { episodeId, documentType: requestedType, hospital, doctor, consent, patientConsent } = req.body;
-    const documentCode = await generateCode('DOC');
+    const documentCode = await generateCode('DOC', patientId);
 
     const consentGiven =
       consent === 'true' ||

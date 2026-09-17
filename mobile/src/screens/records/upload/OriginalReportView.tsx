@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import { colors, spacing, typography, borderRadius, shadows } from '../../../theme';
 import { documentApi } from '../../../api/documentApi';
+import { useAuthStore } from '../../../store/authStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -37,23 +38,27 @@ export const OriginalReportView: React.FC<OriginalReportViewProps> = ({
   mimeType = 'image/jpeg',
   fileName,
 }) => {
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const { token: storeToken } = useAuthStore();
+  const [authToken, setAuthToken] = useState<string | null>(storeToken || null);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
-    const fetchToken = async () => {
-      try {
-        const token = await SecureStore.getItemAsync('auth_token');
-        if (isMounted) setAuthToken(token);
-      } catch (_) {}
-    };
-    fetchToken();
+    if (!authToken) {
+      SecureStore.getItemAsync('auth_token')
+        .then((token) => {
+          if (isMounted && token) setAuthToken(token);
+        })
+        .catch(() => {});
+    }
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [authToken]);
+
+  const effectiveToken = storeToken || authToken;
+  const effectiveDocId = documentId || documentCode;
 
   const isPdf =
     (mimeType && mimeType.includes('pdf')) ||
@@ -65,19 +70,30 @@ export const OriginalReportView: React.FC<OriginalReportViewProps> = ({
     if (uri) {
       return { uri };
     }
-    if (documentId) {
-      const fileUrl = documentApi.getDocumentFileUrl(documentId);
+    if (effectiveDocId) {
+      const baseUrl = documentApi.getDocumentFileUrl(effectiveDocId);
+      const urlWithToken = effectiveToken
+        ? `${baseUrl}?token=${encodeURIComponent(effectiveToken)}`
+        : baseUrl;
       const headers: Record<string, string> = {};
-      if (authToken) {
-        headers.Authorization = `Bearer ${authToken}`;
+      if (effectiveToken) {
+        headers.Authorization = `Bearer ${effectiveToken}`;
       }
       return {
-        uri: fileUrl,
+        uri: urlWithToken,
         headers,
       };
     }
     return null;
-  }, [uri, documentId, authToken]);
+  }, [uri, effectiveDocId, effectiveToken]);
+
+  // Reset error & loading when image source changes
+  useEffect(() => {
+    if (imageSource?.uri) {
+      setImageError(false);
+      setImageLoading(true);
+    }
+  }, [imageSource?.uri]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
@@ -125,8 +141,19 @@ export const OriginalReportView: React.FC<OriginalReportViewProps> = ({
             )}
             {imageError ? (
               <View style={styles.errorContainer}>
-                <Ionicons name="alert-circle-outline" size={36} color={colors.textMuted} />
+                <Ionicons name="alert-circle-outline" size={40} color={colors.textMuted} />
                 <Text style={styles.errorText}>Unable to load original image</Text>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={styles.retryBtn}
+                  onPress={() => {
+                    setImageError(false);
+                    setImageLoading(true);
+                  }}
+                >
+                  <Ionicons name="refresh-outline" size={16} color={colors.primary} />
+                  <Text style={styles.retryBtnText}>Retry Loading</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <Image
@@ -259,6 +286,21 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     color: colors.textMuted,
     marginTop: spacing.xs,
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: borderRadius.pill,
+    backgroundColor: '#E6F4F1',
+  },
+  retryBtnText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.primary,
   },
   emptyFrame: {
     padding: spacing.xl,

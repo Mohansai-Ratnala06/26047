@@ -111,7 +111,7 @@ ${JSON.stringify(payload.safety_alerts, null, 2)}
         },
       };
 
-      const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+      const models = ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
       for (const model of models) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         try {

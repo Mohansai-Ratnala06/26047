@@ -70,6 +70,8 @@ export interface EpisodeClinicalState {
     detectedNewComplaint: string;
     askedAt: string;
   } | null;
+  pendingReportPermission?: boolean;
+  clinicalReportGenerated?: boolean;
   turnCount: number;
   lastUpdated: string;
 }
@@ -80,7 +82,7 @@ export class GeminiNurseBrainService {
 
   constructor() {
     this.geminiApiKey = process.env.GEMINI_API_KEY;
-    this.primaryModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+    this.primaryModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
   }
 
   /**
@@ -135,11 +137,22 @@ CONVERSATIONAL PERSONA & TONE RULES:
 4. NO BRACKETED ENGLISH WORDS IN REGIONAL LANGUAGES:
    - In regional languages (Telugu, Hindi, Tamil, etc.), speak purely and naturally in that script.
    - DO NOT include English translations in parentheses like "(Smart Health Companion)", "(Dhania)", or "(acidity)".
-5. PERMISSION-BASED DOCTOR ESCALATION:
-   - Whenever you recognize that the severity is becoming high (severity score >= 60, red flags, or worsening symptoms despite home care):
+5. PERMISSION-BASED DOCTOR ESCALATION & REAL-TIME REPORT GENERATION:
+   - NEVER generate or trigger a clinical assessment report after just a single initial symptom or question!
+   - During early intake (while onset, duration, and symptom details are being gathered):
+     -> Focus entirely on compassionate, friendly check-in. Ask ONLY 1 gentle follow-up question.
+     -> Set "request_report_permission": false, "patient_consented_to_report": false.
+   - ONLY when you recognize that the severity is becoming high (severity score >= 60, red flags, high fever, or worsening symptoms):
      a) Comfort the patient empathetically.
-     b) Inform them gently that their symptoms require direct doctor consultation for proper checkup.
-     c) Politely ask for their permission: "Since your condition needs a direct checkup, shall I prepare your complete Pre-Consultation Summary so you can show it to your doctor?" (expressed naturally in the patient's language).
+     b) Inform them gently that their symptoms need direct medical checkup.
+     c) Politely ask for their permission in ${patientLanguage}: "Your fever/discomfort is quite high and needs medical checkup. With your permission, shall I prepare your complete Clinical Assessment & Pre-Consultation Summary now so you can show it to your doctor?"
+     d) Set "request_report_permission": true, "patient_consented_to_report": false.
+   - IF stateSnapshot.pendingReportPermission is true:
+     -> If the patient confirms or agrees ("yes", "please prepare", "okay", "sure", "అవును", "తయారు చేయండి", etc.):
+        Set "patient_consented_to_report": true
+        In nurse_dialogue, warmly inform them: "I have prepared your complete Clinical Assessment Report in real-time. You can preview it below to show your doctor."
+     -> If the patient declines:
+        Set "patient_consented_to_report": false. Continue supportive conversation.
 6. UNRELATED NEW PROBLEM DETECTION & PATIENT CONFIRMATION:
    - Compare the patient's statement against the active episode complaint: "${stateSnapshot.chiefComplaint || 'None yet'}".
    - IF the patient is continuing the same issue or reporting remedies/follow-up:
@@ -168,6 +181,8 @@ OUTPUT SCHEMA:
 Respond with strictly valid JSON only:
 {
   "nurse_dialogue": "Warm, caring, single-sentence check-in or guidance in the patient's language (${patientLanguage}).",
+  "request_report_permission": boolean,
+  "patient_consented_to_report": boolean,
   "unrelated_problem_detected": boolean,
   "detected_new_complaint": "string or null",
   "confirm_start_new_episode": boolean,
@@ -265,10 +280,12 @@ Return valid JSON only.
     // 3. EXECUTE GEMINI CALL WITH MODEL FALLBACK
     const candidateModels = [
       this.primaryModel,
+      'gemini-3.6-flash',
       'gemini-3.5-flash',
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-    ];
+      'gemini-3.5-flash-lite',
+      'gemini-3.7-flash',
+      'gemini-flash-latest',
+    ].filter((v, i, a) => a.indexOf(v) === i);
 
     let rawLlmOutput = '';
     let parsedLlm: any = null;
@@ -324,6 +341,15 @@ Return valid JSON only.
       };
     } else if (parsedLlm.confirm_start_new_episode) {
       stateSnapshot.pendingEpisodeConfirmation = null;
+    }
+
+    // Handle Report Permission & Real-Time Generation State
+    if (parsedLlm.request_report_permission) {
+      stateSnapshot.pendingReportPermission = true;
+    }
+    if (parsedLlm.patient_consented_to_report) {
+      stateSnapshot.pendingReportPermission = false;
+      stateSnapshot.clinicalReportGenerated = true;
     }
 
     // 4. CUMULATIVE MERGE WITH EPISODE MEMORY (Never erase existing data)
@@ -692,25 +718,37 @@ CLINICAL SOAP ASSESSMENT:
 
     let finalNurseMessage = parsedLlm.nurse_dialogue || '';
 
-    // If mild remedies match and not severe, gently enrich without repetitive names
-    if (
-      !stateSnapshot.consultationRecommended &&
-      ayurvedaEval.decision === 'eligible' &&
-      ayurvedaEval.recommendations.length > 0 &&
-      !finalNurseMessage.toLowerCase().includes(ayurvedaEval.recommendations[0].name.toLowerCase())
-    ) {
-      const topRemedy = ayurvedaEval.recommendations[0];
-      finalNurseMessage += `\n\nFor mild supportive relief, official CCRAS guidelines recommend ${topRemedy.name}: ${topRemedy.preparation_summary} (Dose: ${topRemedy.source_dosage_reference}). If symptoms persist for 2-3 days, please consult a doctor.`;
+    // Safety and timing logic for Real-Time Clinical Assessment & Home Care generation:
+    // Rule: The assessment report MUST NOT be generated after a single question or before follow-up completes.
+    // It is ONLY generated in real-time when:
+    // 1. Immediate life-threatening emergency is detected (immediate patient safety, e.g. severe dyspnea, chest pain)
+    // 2. High severity (>=60) or completed follow-up AND patient gave permission/consent to prepare the report
+    // IMPORTANT: If the nurse is actively asking for permission (request_report_permission: true),
+    // wait for the patient's reply on the next turn! Do NOT prematurely show the report while asking for permission!
+    const isLifeThreateningEmergency =
+      newSeverityScore >= 85 ||
+      detectedRedFlags.some((rf: string) =>
+        /chest pain|difficulty breathing|breathless|unconscious|stroke|hemoptysis|cyanosis|seizure/i.test(rf)
+      );
+
+    const isAskingPermission = parsedLlm.request_report_permission === true;
+    const patientConsented = parsedLlm.patient_consented_to_report === true || stateSnapshot.clinicalReportGenerated === true;
+    const isIntakeInProgress = stateSnapshot.turnCount <= 1 || (!stateSnapshot.intakeSlots.duration && !isLifeThreateningEmergency);
+
+    const shouldGenerateClinicalReport =
+      isLifeThreateningEmergency ||
+      (!isAskingPermission && patientConsented && !isIntakeInProgress);
+
+    if (shouldGenerateClinicalReport) {
+      stateSnapshot.clinicalReportGenerated = true;
     }
 
-    const isComplete =
-      stateSnapshot.consultationRecommended ||
-      Boolean(stateSnapshot.chiefComplaint && stateSnapshot.intakeSlots.duration);
+    const isComplete = shouldGenerateClinicalReport;
 
     const status: 'in_progress' | 'complete' | 'emergency' =
-      detectedRedFlags.length > 0
+      isLifeThreateningEmergency
         ? 'emergency'
-        : isComplete
+        : shouldGenerateClinicalReport
         ? 'complete'
         : 'in_progress';
 
@@ -725,7 +763,7 @@ CLINICAL SOAP ASSESSMENT:
       red_flag_status: detectedRedFlags.length > 0 ? 'red_flags_detected' : 'no_obvious_red_flags',
       red_flags: stateSnapshot.redFlagsPresent,
       updated_state: stateSnapshot,
-      clinical_output: standardizedClinicalOutput,
+      clinical_output: shouldGenerateClinicalReport ? standardizedClinicalOutput : null,
       unrelated_problem_detected: Boolean(parsedLlm.unrelated_problem_detected),
       detected_new_complaint: parsedLlm.detected_new_complaint || null,
       confirm_start_new_episode: Boolean(parsedLlm.confirm_start_new_episode),

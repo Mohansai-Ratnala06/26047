@@ -51,6 +51,7 @@ export interface TimelineEpisode {
     room?: string;
   };
   clinicalNotes?: string;
+  clinicalOutput?: Record<string, any>;
   startedAt: string;
   resolvedAt?: string;
   createdAt: string;
@@ -92,6 +93,10 @@ export const episodeApi = {
 
   updateEpisode: (episodeId: string, data: any): Promise<any> => {
     return apiClient.patch(`/episodes/${episodeId}`, data);
+  },
+
+  deleteEpisode: (episodeId: string): Promise<any> => {
+    return apiClient.delete(`/episodes/${episodeId}`);
   },
 };
 

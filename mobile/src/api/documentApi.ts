@@ -40,7 +40,7 @@ export const documentApi = {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    // Method 1: Native Expo File.upload (streams file directly via OS layer, 0 memory overhead)
+    // Method 1: Native Expo File.upload (streams file directly via OS layer)
     try {
       const file = new File(params.uri);
       if (typeof file.upload === 'function') {
@@ -69,13 +69,41 @@ export const documentApi = {
         }
       }
     } catch (uploadErr: any) {
-      // Re-throw genuine server error responses
-      if (uploadErr.message && !uploadErr.message.includes('Unsupported FormDataPart') && !uploadErr.message.includes('not a function')) {
-        throw uploadErr;
-      }
+      console.warn(
+        '[documentApi] Native File.upload failed or timed out, falling back to network transport:',
+        uploadErr?.message || uploadErr
+      );
     }
 
-    // Method 2: Expo File with Winter fetch FormData (supports Expo File with .bytes())
+    // Method 2: Standard React Native multipart FormData via apiClient (Axios with 120s timeout)
+    try {
+      const formData = new FormData();
+      formData.append('file', {
+        uri: params.uri,
+        name: params.name || `doc_${Date.now()}.jpg`,
+        type: params.type || 'image/jpeg',
+      } as any);
+
+      if (params.documentType) formData.append('documentType', params.documentType);
+      if (params.hospital) formData.append('hospital', params.hospital);
+      if (params.doctor) formData.append('doctor', params.doctor);
+      if (params.episodeId) formData.append('episodeId', params.episodeId);
+      if (params.consent !== undefined) formData.append('consent', String(params.consent));
+
+      const res: any = await apiClient.post('/documents/upload', formData, {
+        timeout: 120000,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      if (res?.success) {
+        return res;
+      }
+    } catch (axiosErr: any) {
+      console.warn('[documentApi] apiClient multipart upload fallback error:', axiosErr?.message || axiosErr);
+    }
+
+    // Method 3: Expo File with Winter fetch FormData (supports Expo File with .bytes())
     const file = new File(params.uri);
     const formData = new FormData();
     formData.append('file', file as any);

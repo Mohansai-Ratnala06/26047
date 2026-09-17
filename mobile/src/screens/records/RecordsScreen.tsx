@@ -387,14 +387,218 @@ export const RecordsScreen: React.FC = () => {
               ? ep.doctorId.name
               : undefined;
 
+          const clinicalOutput = ep.clinicalOutput;
+          const preConsult = clinicalOutput?.pre_consultation_summary;
+          const soap = preConsult?.soap;
+          const hpi = preConsult?.history_of_present_illness?.structured_data;
+          const safetySummary = clinicalOutput?.ayurveda_recommendation?.safety_findings_summary;
+          const blockedReasons = clinicalOutput?.ayurveda_recommendation?.blocked_reasons || [];
+          const remedies = clinicalOutput?.ayurveda_recommendation?.remedies_tracked || ep.remediesTracked || [];
+
+          // Parse clinicalNotes regex fallback if clinicalOutput is missing or partial
+          const notes = ep.clinicalNotes || '';
+          const notesSeverityMatch = notes.match(/Severity:\s*(\d+)\/100/i);
+          const notesSoapAssessmentMatch = notes.match(/SOAP Assessment:\s*([^\n\r]+)/i);
+          const notesSoapPlanMatch = notes.match(/SOAP Plan:\s*([^\n\r]+)/i);
+          const notesSoapSubjectiveMatch = notes.match(/SOAP Subjective:\s*([^\n\r]+)/i);
+          const notesHpiMatch = notes.match(/HPI:\s*([^\n\r]+)/i);
+          const notesRemediesMatch = notes.match(/Remedies Attempted:\s*([^\n\r]+)/i);
+
+          const severityScore =
+            safetySummary?.severity_score ??
+            (notesSeverityMatch ? Number(notesSeverityMatch[1]) : undefined);
+
+          // 1. Diagnoses / Clinical Findings
+          const diagnoses: string[] = [];
+          if (soap?.assessment) {
+            diagnoses.push(soap.assessment);
+          } else if (notesSoapAssessmentMatch?.[1]?.trim()) {
+            diagnoses.push(notesSoapAssessmentMatch[1].trim());
+          }
+          if (soap?.highlightedProblem && !diagnoses.includes(soap.highlightedProblem)) {
+            diagnoses.unshift(soap.highlightedProblem);
+          } else if (
+            ep.chiefComplaint &&
+            !diagnoses.some((d) => d.toLowerCase().includes(ep.chiefComplaint.toLowerCase())) &&
+            !ep.chiefComplaint.toLowerCase().includes('consultation') &&
+            !ep.chiefComplaint.toLowerCase().includes('general health assessment')
+          ) {
+            diagnoses.unshift(ep.chiefComplaint);
+          }
+
+          // 2. Doctor's Advice / Care Plan
+          const advice: string[] = [];
+          if (soap?.plan) {
+            advice.push(soap.plan);
+          } else if (notesSoapPlanMatch?.[1]?.trim()) {
+            advice.push(notesSoapPlanMatch[1].trim());
+          }
+          if (Array.isArray(blockedReasons) && blockedReasons.length > 0) {
+            blockedReasons.forEach((br: string) => {
+              if (!advice.includes(br)) advice.push(br);
+            });
+          }
+
+          // 3. Vitals & Clinical Observations
+          const vitals: Array<{ parameter: string; value: string; unit?: string | null }> = [];
+          if (severityScore != null) {
+            const num = Number(severityScore);
+            const label =
+              num >= 80
+                ? 'Urgent / Critical'
+                : num >= 60
+                ? 'High Severity (Consultation Required)'
+                : num >= 35
+                ? 'Moderate'
+                : 'Mild';
+            vitals.push({
+              parameter: 'Severity Score',
+              value: `${severityScore}/100 - ${label}`,
+            });
+          }
+          if (hpi?.duration) {
+            vitals.push({ parameter: 'Symptom Duration', value: hpi.duration });
+          }
+          if (hpi?.location) {
+            vitals.push({ parameter: 'Affected Area', value: hpi.location });
+          }
+          if (hpi?.nature_of_pain) {
+            vitals.push({ parameter: 'Nature of Pain', value: hpi.nature_of_pain });
+          }
+          if (Array.isArray(hpi?.associated_symptoms) && hpi.associated_symptoms.length > 0) {
+            vitals.push({
+              parameter: 'Associated Symptoms',
+              value: hpi.associated_symptoms.join(', '),
+            });
+          } else if (Array.isArray(ep.symptoms) && ep.symptoms.length > 0) {
+            const symNames = ep.symptoms.map((s: any) => (typeof s === 'string' ? s : s?.name)).filter(Boolean);
+            if (symNames.length > 0) {
+              vitals.push({ parameter: 'Reported Symptoms', value: symNames.join(', ') });
+            }
+          }
+
+          // 4. Medications & Tracked Remedies
+          const medications: string[] = [];
+          if (Array.isArray(remedies) && remedies.length > 0) {
+            remedies.forEach((r: any) => {
+              const rName = r.remedyName || r.remedy;
+              if (rName) {
+                const statusStr = r.status ? `[${r.status.toUpperCase()}]` : '';
+                const reliefStr =
+                  r.reliefReported && r.reliefReported !== 'pending'
+                    ? ` - Relief: ${r.reliefReported}`
+                    : '';
+                medications.push(`${rName} ${statusStr}${reliefStr}`.trim());
+              }
+            });
+          } else if (notesRemediesMatch?.[1]?.trim() && notesRemediesMatch[1].trim() !== 'None') {
+            notesRemediesMatch[1]
+              .split(',')
+              .map((r: string) => r.trim())
+              .filter(Boolean)
+              .forEach((r: string) => medications.push(r));
+          }
+
+          // 5. Safety Alerts
+          const safetyAlerts: Array<{ severity: string; type: string; message: string }> = [];
+          if (
+            safetySummary?.immediate_attention_required ||
+            safetySummary?.red_flag_status === 'red_flags_detected' ||
+            (severityScore != null && severityScore >= 60)
+          ) {
+            safetyAlerts.push({
+              severity: 'HIGH',
+              type: 'CLINICAL_ESCALATION',
+              message:
+                'High severity clinical escalation detected during intake. Immediate in-person physician consultation recommended.',
+            });
+          }
+          if (Array.isArray(ep.triage?.redFlags) && ep.triage.redFlags.length > 0) {
+            ep.triage.redFlags.forEach((rf: string) => {
+              safetyAlerts.push({
+                severity: 'HIGH',
+                type: 'RED_FLAG',
+                message: rf,
+              });
+            });
+          }
+
+          // 6. Clinical Brain Intelligence Analysis Card
+          const riskLevel =
+            (safetySummary?.risk_level ||
+              ep.triage?.level ||
+              (severityScore != null && severityScore >= 80
+                ? 'urgent'
+                : severityScore != null && severityScore >= 60
+                ? 'high'
+                : 'moderate')
+            ).toLowerCase();
+
+          const brainAnalysis = {
+            clinicalSummary:
+              soap?.subjective ||
+              soap?.assessment ||
+              (notesSoapSubjectiveMatch?.[1] ? notesSoapSubjectiveMatch[1].trim() : undefined) ||
+              (notesHpiMatch?.[1] ? `HPI: ${notesHpiMatch[1].trim()}` : undefined) ||
+              ep.clinicalNotes?.slice(0, 300) ||
+              'Clinical Pre-Consultation assessment completed by Smart Health Companion.',
+            riskLevel: riskLevel as any,
+            redFlags:
+              ep.triage?.redFlags?.length
+                ? ep.triage.redFlags
+                : blockedReasons.length
+                ? blockedReasons
+                : undefined,
+            suggestedNextSteps: soap?.plan
+              ? [soap.plan]
+              : notesSoapPlanMatch?.[1]
+              ? [notesSoapPlanMatch[1].trim()]
+              : undefined,
+            carePlanHighlights:
+              hpi?.duration || hpi?.nature_of_pain
+                ? [
+                    `Onset: ${hpi.duration || 'Acute'}`,
+                    `Pain Character: ${hpi.nature_of_pain || 'Reported'}`,
+                    `Mobility: ${
+                      hpi.associated_symptoms?.some((s: string) => s.includes('నడవలేకపోవడం'))
+                        ? 'Loss of ambulation / unable to walk'
+                        : 'Functional impairment reported'
+                    }`,
+                  ]
+                : undefined,
+          };
+
+          // 7. Patient Display Name & Extracted Data Structure
+          const patientDisplayName =
+            user?.name ||
+            (typeof ep.patientId === 'object' &&
+              (ep.patientId?.demographics?.firstName
+                ? `${ep.patientId.demographics.firstName} ${ep.patientId.demographics.lastName || ''}`.trim()
+                : ep.patientId?.name)) ||
+            'Ratnala Mohan Sai';
+
+          const facilityDisplayName = doctorName
+            ? `Dr. ${doctorName} Consultation`
+            : 'Smart Health Companion (VaidyaArc AI)';
+
+          const extractedData = {
+            patientName: patientDisplayName,
+            reportedDate: formatRecordDate(ep.startedAt || ep.createdAt),
+            clinicName: facilityDisplayName,
+            healthDocumentType: 'AI Pre-Consultation Summary',
+            diagnoses,
+            medications,
+            advice,
+            vitals,
+            safetyAlerts,
+          };
+
           unified.push({
             id: ep._id || ep.episodeCode || Math.random().toString(),
             code: ep.episodeCode || 'EP-RECORD',
-            facilityName: doctorName
-              ? `Dr. ${doctorName} Consultation`
-              : 'Clinical Episode Record',
+            facilityName: facilityDisplayName,
             doctorName,
-            documentType: formatDocumentType(ep.type || 'consultation'),
+            documentType: 'AI Pre-Consultation Summary',
             rawType: ep.type,
             category: 'linked',
             statusBadge: 'Linked Record',
@@ -403,6 +607,13 @@ export const RecordsScreen: React.FC = () => {
             verificationStatus: 'verified',
             extractionStatus: 'completed',
             clinicalNotes: ep.clinicalNotes,
+            diagnoses,
+            medications,
+            advice,
+            vitals,
+            safetyAlerts,
+            brainAnalysis,
+            extractedData,
           });
         });
       } catch (epErr) {
@@ -496,9 +707,17 @@ export const RecordsScreen: React.FC = () => {
     // Dismiss options popup first
     setOptionsModalVisible(false);
 
+    const isEpisode =
+      record.code?.startsWith('EP-') ||
+      (record.category === 'linked' && !record.storageInfo);
+
+    const typeLabel = isEpisode
+      ? (record.documentType || 'Clinical Episode Record')
+      : (record.documentType || 'Health Document');
+
     Alert.alert(
       t('records.deleteTitle'),
-      `${t('records.deleteWarning')}\n\n• Document: ${record.documentType || 'Health Document'}\n• Code: ${record.code}`,
+      `${t('records.deleteWarning')}\n\n• ${isEpisode ? 'Record' : 'Document'}: ${typeLabel}\n• Code: ${record.code}`,
       [
         {
           text: t('common.cancel'),
@@ -510,7 +729,16 @@ export const RecordsScreen: React.FC = () => {
           onPress: async () => {
             try {
               setLoading(true);
-              await documentApi.deleteDocument(record.id);
+              if (isEpisode) {
+                try {
+                  await episodeApi.deleteEpisode(record.id);
+                } catch (epErr) {
+                  // Fallback: documentApi deleteDocument also resolves episodeId/code
+                  await documentApi.deleteDocument(record.id);
+                }
+              } else {
+                await documentApi.deleteDocument(record.id);
+              }
 
               if (selectedRecord?.id === record.id) {
                 setDetailModalVisible(false);
@@ -862,8 +1090,8 @@ export const RecordsScreen: React.FC = () => {
               </View>
             </View>
 
-            {/* Dual View Segmented Switcher */}
-            {selectedRecord && (
+            {/* Dual View Segmented Switcher (Only shown if physical original document file exists) */}
+            {selectedRecord && (selectedRecord.storageInfo || selectedRecord.category === 'uploaded') && (
               <View style={styles.detailTabBar}>
                 <TouchableOpacity
                   activeOpacity={0.8}
