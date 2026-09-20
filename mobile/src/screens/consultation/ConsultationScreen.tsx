@@ -11,11 +11,13 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { consentApi } from '../../api/consentApi';
 import { Button, LoadingState, ErrorState } from '../../components';
 import { useTranslation } from '../../i18n';
 import { colors, spacing, typography, borderRadius, shadows } from '../../theme';
+import { MainTabParamList } from '../../navigation/types';
 
 // ==========================================
 // Types
@@ -30,6 +32,9 @@ export interface ConsentRecord {
     name?: string;
     phone?: string;
   } | string;
+  organizationName?: string;
+  facilityName?: string;
+  specialty?: string;
   purpose?: string;
   scope?: string;
   status: 'PENDING' | 'GRANTED' | 'REVOKED' | 'EXPIRED' | string;
@@ -37,6 +42,12 @@ export interface ConsentRecord {
   expiresAt?: string;
   revokedAt?: string;
   revokedReason?: string;
+  preConsultationReport?: Record<string, any>;
+  documentsShared?: Array<{
+    documentId?: string;
+    title?: string;
+    type?: string;
+  }>;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -85,13 +96,19 @@ function formatDate(dateString?: string): string {
 }
 
 function getOrganizationName(record: ConsentRecord): string {
+  if (record.organizationName && record.organizationName.trim()) {
+    return record.organizationName;
+  }
+  if (record.facilityName && record.facilityName.trim()) {
+    return record.facilityName;
+  }
   if (typeof record.grantedTo === 'object' && record.grantedTo?.name) {
     return record.grantedTo.name;
   }
   if (typeof record.grantedTo === 'string' && record.grantedTo.trim()) {
     return record.grantedTo;
   }
-  return 'Health Repository Service';
+  return record.specialty ? `${record.specialty} Department` : 'Health Repository Service';
 }
 
 function isDateExpired(dateString?: string): boolean {
@@ -170,11 +187,21 @@ const RequestCard: React.FC<RequestCardProps> = ({ record, onViewMore }) => {
   const orgName = getOrganizationName(record);
   const timeText = formatRelativeTime(record.createdAt);
   const displayStatus = isDateExpired(record.expiresAt) ? 'EXPIRED' : record.status;
+  const isPreConsultation = Boolean(record.preConsultationReport);
 
   return (
     <View style={styles.consentCard}>
-      {/* Top Tag */}
-      <Text style={styles.cardHeaderTag}>Subscription Request</Text>
+      {/* Top Tag Row */}
+      <View style={styles.cardHeaderTagRow}>
+        <Text style={styles.cardHeaderTag}>
+          {isPreConsultation ? 'Clinical Pre-Consultation Request' : 'Subscription Request'}
+        </Text>
+        {record.specialty ? (
+          <View style={styles.specialtyTagBadge}>
+            <Text style={styles.specialtyTagText}>{record.specialty}</Text>
+          </View>
+        ) : null}
+      </View>
 
       {/* Main Title & Status Row */}
       <View style={styles.cardTopRow}>
@@ -194,6 +221,16 @@ const RequestCard: React.FC<RequestCardProps> = ({ record, onViewMore }) => {
           {record.purpose || 'Health Data Consultation & Review'}
         </Text>
       </View>
+
+      {/* Attached Documents Tag if present */}
+      {record.documentsShared && record.documentsShared.length > 0 ? (
+        <View style={styles.attachedDocsInfoRow}>
+          <Ionicons name="attach-outline" size={13} color={colors.primary} />
+          <Text style={styles.attachedDocsInfoText}>
+            {record.documentsShared.length} profile health {record.documentsShared.length === 1 ? 'record' : 'records'} attached
+          </Text>
+        </View>
+      ) : null}
 
       {/* Action */}
       <TouchableOpacity
@@ -485,6 +522,81 @@ const ConsentDetailModal: React.FC<ConsentModalProps> = ({
               <Text style={styles.modalErrorText}>{actionError}</Text>
             ) : null}
 
+            {/* Pre-Consultation Assessment Summary (if present) */}
+            {record.preConsultationReport ? (
+              <View style={styles.modalFieldGroup}>
+                <Text style={styles.modalFieldLabel}>Pre-Consultation Clinical Assessment</Text>
+                <View style={styles.modalReportCard}>
+                  {record.preConsultationReport.chiefComplaint ? (
+                    <View style={styles.modalReportRow}>
+                      <Text style={styles.modalReportKey}>Chief Complaint:</Text>
+                      <Text style={styles.modalReportVal}>{record.preConsultationReport.chiefComplaint}</Text>
+                    </View>
+                  ) : null}
+                  {record.preConsultationReport.duration ? (
+                    <View style={styles.modalReportRow}>
+                      <Text style={styles.modalReportKey}>Duration:</Text>
+                      <Text style={styles.modalReportVal}>{record.preConsultationReport.duration}</Text>
+                    </View>
+                  ) : null}
+                  {record.preConsultationReport.severity ? (
+                    <View style={styles.modalReportRow}>
+                      <Text style={styles.modalReportKey}>Severity:</Text>
+                      <Text style={styles.modalReportVal}>{record.preConsultationReport.severity}</Text>
+                    </View>
+                  ) : null}
+                  {record.preConsultationReport.soapAssessment?.assessment ? (
+                    <View style={styles.modalReportCol}>
+                      <Text style={styles.modalReportKey}>Physician SOAP Differential:</Text>
+                      <Text style={styles.modalReportLongVal}>
+                        {record.preConsultationReport.soapAssessment.assessment}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {Array.isArray(record.preConsultationReport.doctorQuestions) && record.preConsultationReport.doctorQuestions.length > 0 ? (
+                    <View style={styles.modalReportCol}>
+                      <Text style={styles.modalReportKey}>Doctor Consultation Questions ({record.preConsultationReport.doctorQuestions.length}):</Text>
+                      {record.preConsultationReport.doctorQuestions.slice(0, 3).map((q: any, qIdx: number) => (
+                        <Text key={qIdx} style={styles.modalQuestionItem}>
+                          • {typeof q === 'string' ? q : q.question || q.text}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
+
+            {/* Confirmed Profile Health Documents */}
+            {Array.isArray(record.documentsShared) && record.documentsShared.length > 0 ? (
+              <View style={styles.modalFieldGroup}>
+                <Text style={styles.modalFieldLabel}>Confirmed Health Documents</Text>
+                <View style={styles.modalSharedDocsList}>
+                  {record.documentsShared.map((doc, dIdx) => (
+                    <View key={dIdx} style={styles.modalSharedDocItem}>
+                      <Ionicons name="document-attach-outline" size={14} color={colors.primary} />
+                      <Text style={styles.modalSharedDocText} numberOfLines={1}>
+                        {doc.title || `Document #${dIdx + 1}`} ({doc.type || 'medical record'})
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {/* Pending HIS Intake Banner */}
+            {isPending && record.preConsultationReport ? (
+              <View style={styles.modalPendingHisNotice}>
+                <Ionicons name="time-outline" size={18} color="#B45309" />
+                <View style={{ flex: 1, marginLeft: spacing.xs }}>
+                  <Text style={styles.modalPendingHisTitle}>Pending Hospital Information System (HIS) Intake</Text>
+                  <Text style={styles.modalPendingHisBody}>
+                    Your pre-consultation summary and selected health records are securely held in PENDING state awaiting hospital system data transfer integration.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
             {/* Actions for patient control */}
             <View style={styles.modalActions}>
               {submitting ? (
@@ -541,10 +653,15 @@ const ConsentDetailModal: React.FC<ConsentModalProps> = ({
 export const ConsultationScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  const route = useRoute<RouteProp<MainTabParamList, 'Consultation'>>();
 
   // Navigation / Tabs State
-  const [primarySegment, setPrimarySegment] = useState<PrimarySegment>('Requests');
-  const [requestsSubTab, setRequestsSubTab] = useState<RequestsSubTab>('All');
+  const [primarySegment, setPrimarySegment] = useState<PrimarySegment>(
+    route.params?.initialSegment || 'Requests'
+  );
+  const [requestsSubTab, setRequestsSubTab] = useState<RequestsSubTab>(
+    route.params?.initialSubTab || 'All'
+  );
   const [approvedSubTab, setApprovedSubTab] = useState<ApprovedSubTab>('Granted');
 
   // Data State
@@ -587,6 +704,28 @@ export const ConsultationScreen: React.FC = () => {
   useEffect(() => {
     fetchConsents();
   }, [fetchConsents]);
+
+  // Handle incoming route params (e.g. from Care Pathway consent submission)
+  useEffect(() => {
+    if (route.params?.initialSegment) {
+      setPrimarySegment(route.params.initialSegment);
+    }
+    if (route.params?.initialSubTab) {
+      setRequestsSubTab(route.params.initialSubTab);
+    }
+  }, [route.params?.initialSegment, route.params?.initialSubTab]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchConsents(true);
+      if (route.params?.initialSegment) {
+        setPrimarySegment(route.params.initialSegment);
+      }
+      if (route.params?.initialSubTab) {
+        setRequestsSubTab(route.params.initialSubTab);
+      }
+    }, [fetchConsents, route.params?.initialSegment, route.params?.initialSubTab])
+  );
 
   // Filtering Logic
   const filteredRecords = useMemo(() => {
@@ -1247,6 +1386,126 @@ const styles = StyleSheet.create({
   },
   modalCloseActionButton: {
     marginTop: spacing.xs,
+  },
+
+  // Pre-Consultation Card Enhancements
+  cardHeaderTagRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  specialtyTagBadge: {
+    backgroundColor: colors.mintWash,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: borderRadius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(10, 77, 82, 0.15)',
+  },
+  specialtyTagText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+  },
+  attachedDocsInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+    gap: 4,
+  },
+  attachedDocsInfoText: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.medium,
+  },
+
+  // Modal Pre-Consultation Report Section
+  modalReportCard: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    gap: 6,
+    marginTop: 4,
+  },
+  modalReportRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalReportCol: {
+    marginTop: 2,
+  },
+  modalReportKey: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.textSecondary,
+  },
+  modalReportVal: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  modalReportLongVal: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textPrimary,
+    lineHeight: 16,
+    marginTop: 2,
+    backgroundColor: colors.surface,
+    padding: spacing.xs,
+    borderRadius: borderRadius.xs,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  modalQuestionItem: {
+    fontSize: 11,
+    color: colors.textPrimary,
+    marginVertical: 1,
+    paddingLeft: 4,
+  },
+  modalSharedDocsList: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.sm,
+    padding: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    gap: 4,
+    marginTop: 4,
+  },
+  modalSharedDocItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  modalSharedDocText: {
+    fontSize: 11,
+    color: colors.textPrimary,
+    fontWeight: typography.fontWeight.medium,
+    flex: 1,
+  },
+  modalPendingHisNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    padding: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  modalPendingHisTitle: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.bold,
+    color: '#B45309',
+  },
+  modalPendingHisBody: {
+    fontSize: 10,
+    color: '#92400E',
+    marginTop: 2,
+    lineHeight: 14,
   },
 });
 

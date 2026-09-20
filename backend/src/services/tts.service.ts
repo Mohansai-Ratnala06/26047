@@ -86,6 +86,9 @@ export class TtsService {
     const languageCode = this.normalizeLanguageCode(rawLanguage, cleanText);
     const model = 'bulbul:v3';
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
     try {
       const endpoint = 'https://api.sarvam.ai/text-to-speech';
       const response = await fetch(endpoint, {
@@ -100,7 +103,9 @@ export class TtsService {
           language_code: languageCode,
           model,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();

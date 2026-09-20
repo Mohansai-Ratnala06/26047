@@ -15,16 +15,37 @@ export const createConsent = async (req: Request, res: Response) => {
       return res.status(404).json(response);
     }
 
-    const { grantedTo, purpose, scope, expiresAt } = req.body;
+    const {
+      grantedTo,
+      organizationName,
+      facilityName,
+      specialty,
+      purpose,
+      scope,
+      status,
+      expiresAt,
+      preConsultationReport,
+      documentsShared,
+    } = req.body;
     const consentCode = await generateCode('CON', patientId);
+
+    // Default expiry: 30 days from now if not explicitly passed
+    const defaultExpiry = new Date();
+    defaultExpiry.setDate(defaultExpiry.getDate() + 30);
 
     const consent = new Consent({
       patientId,
       consentCode,
-      grantedTo,
-      purpose,
-      scope,
-      expiresAt,
+      ...(grantedTo ? { grantedTo } : {}),
+      organizationName: organizationName || facilityName || (specialty ? `${specialty} Department` : 'Healthcare Facility'),
+      facilityName,
+      specialty,
+      purpose: purpose || 'Pre-consultation clinical evaluation and health records transfer',
+      scope: scope || 'Pre-Consultation Summary Report and confirmed health records',
+      status: status || 'PENDING',
+      expiresAt: expiresAt ? new Date(expiresAt) : defaultExpiry,
+      preConsultationReport,
+      documentsShared: Array.isArray(documentsShared) ? documentsShared : [],
     });
     await consent.save();
 
@@ -48,9 +69,13 @@ export const getConsents = async (req: Request, res: Response) => {
         const response: ApiResponse = { success: false, message: 'Patient profile not found' };
         return res.status(404).json(response);
       }
-      consents = await Consent.find({ patientId }).populate('grantedTo', 'name phone');
+      consents = await Consent.find({ patientId })
+        .populate('grantedTo', 'name phone')
+        .sort({ createdAt: -1 });
     } else {
-      consents = await Consent.find({ grantedTo: userId }).populate('patientId');
+      consents = await Consent.find({ grantedTo: userId })
+        .populate('patientId')
+        .sort({ createdAt: -1 });
     }
 
     const response: ApiResponse = { success: true, data: consents };

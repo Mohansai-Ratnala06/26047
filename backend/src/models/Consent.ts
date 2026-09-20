@@ -5,7 +5,10 @@ export type ConsentStatus = 'PENDING' | 'GRANTED' | 'REVOKED' | 'EXPIRED';
 export interface IConsent extends Document {
   patientId: Types.ObjectId;
   consentCode: string;
-  grantedTo: Types.ObjectId;
+  grantedTo?: Types.ObjectId;
+  organizationName?: string;
+  facilityName?: string;
+  specialty?: string;
   purpose: string;
   scope?: string;
   status: ConsentStatus;
@@ -13,6 +16,12 @@ export interface IConsent extends Document {
   expiresAt: Date;
   revokedAt?: Date;
   revokedReason?: string;
+  preConsultationReport?: Record<string, any>;
+  documentsShared?: Array<{
+    documentId?: string;
+    title?: string;
+    type?: string;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,8 +41,11 @@ const ConsentSchema = new Schema<IConsent>(
     grantedTo: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: false,
     },
+    organizationName: { type: String },
+    facilityName: { type: String },
+    specialty: { type: String },
     purpose: { type: String, required: true },
     scope: { type: String },
     status: {
@@ -45,11 +57,20 @@ const ConsentSchema = new Schema<IConsent>(
     expiresAt: { type: Date, required: true },
     revokedAt: { type: Date },
     revokedReason: { type: String },
+    preConsultationReport: { type: Schema.Types.Mixed },
+    documentsShared: [
+      {
+        documentId: { type: String },
+        title: { type: String },
+        type: { type: String },
+      },
+    ],
   },
   { timestamps: true }
 );
 
 ConsentSchema.index({ patientId: 1, status: 1 });
 ConsentSchema.index({ grantedTo: 1 });
+ConsentSchema.index({ createdAt: -1 });
 
 export default mongoose.model<IConsent>('Consent', ConsentSchema);

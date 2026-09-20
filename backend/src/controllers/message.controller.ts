@@ -74,21 +74,20 @@ export const sendMessage = async (req: Request, res: Response) => {
       audioS3Key,
       timestamp: new Date(),
     });
-    await patientMessage.save();
+    // Run patientMessage save, Patient lookup, and previousMessages lookup concurrently
+    const [, patientDoc, previousMessages] = await Promise.all([
+      patientMessage.save(),
+      Patient.findById(patientId).lean(),
+      Message.find({
+        episodeId: conversation.episodeId,
+        patientId,
+      })
+        .sort({ timestamp: -1 })
+        .limit(10)
+        .lean(),
+    ]);
 
-    // 3. Construct NormalizedClinicalInputDTO for Clinical Brain
-    const patientDoc = await Patient.findById(patientId);
-
-    // Retrieve recent conversation messages for this episode & patient to provide multi-turn context
-    const previousMessages = await Message.find({
-      episodeId: conversation.episodeId,
-      patientId,
-      _id: { $ne: patientMessage._id },
-    })
-      .sort({ timestamp: -1 })
-      .limit(10);
-
-    const formattedHistory = previousMessages.reverse().map((m) => ({
+    const formattedHistory = (previousMessages || []).reverse().map((m: any) => ({
       role: m.role,
       content: m.content,
       timestamp: m.timestamp,
@@ -185,11 +184,17 @@ export const sendMessage = async (req: Request, res: Response) => {
     let audioMimeType: string | undefined = undefined;
     if (inputType === 'voice' || req.body.generateAudio === true) {
       try {
-        const ttsResult = await ttsService.synthesize(nativeAssistantContent, patientLanguage);
+        // Fast race with 3500ms timeout budget so cloud TTS delays never stall interactive chat
+        const ttsPromise = ttsService.synthesize(nativeAssistantContent, patientLanguage);
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500));
+        const ttsResult = await Promise.race([ttsPromise, timeoutPromise]);
+
         if (ttsResult && ttsResult.audioBase64) {
           audioBase64 = ttsResult.audioBase64;
           audioMimeType = ttsResult.mimeType || 'audio/wav';
           console.info(`[TTS Synthesis] Generated ${audioMimeType} audio (${ttsResult.languageCode}) for: "${nativeAssistantContent.substring(0, 40)}..."`);
+        } else if (!ttsResult) {
+          console.info('[TTS Synthesis] Cloud TTS exceeded 3.5s budget — continuing without blocking turn response. Client can fetch audio on-demand.');
         }
       } catch (ttsErr: any) {
         console.warn('[TTS Synthesis] Warning: Audio synthesis error, continuing with text-only:', ttsErr.message);

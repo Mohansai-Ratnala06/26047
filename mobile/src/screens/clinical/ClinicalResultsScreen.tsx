@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
+  Modal,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,9 @@ import {
   fetchRecommendedFacilities,
   RecommendedFacility,
 } from '../../services/facility.service';
+import { consentApi } from '../../api/consentApi';
+import { documentApi } from '../../api/documentApi';
+import { healthProfileApi } from '../../api/healthProfileApi';
 
 type ClinicalResultsRouteProp = RouteProp<RootStackParamList, 'ClinicalResults'>;
 
@@ -41,6 +45,15 @@ export const ClinicalResultsScreen: React.FC = () => {
   const [facilitySearchLoc, setFacilitySearchLoc] = useState<string | null>(null);
   const [customCityQuery, setCustomCityQuery] = useState<string>('');
   const [showLocationInput, setShowLocationInput] = useState<boolean>(false);
+
+  // Consent & Record Sharing State
+  const [isConsentModalVisible, setIsConsentModalVisible] = useState(false);
+  const [selectedFacilityForConsent, setSelectedFacilityForConsent] = useState<RecommendedFacility | null>(null);
+  const [isSubmittingConsent, setIsSubmittingConsent] = useState(false);
+  const [isLoadingConsentData, setIsLoadingConsentData] = useState(false);
+  const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [consentError, setConsentError] = useState<string | null>(null);
 
   // Extract structured fields from clinicalOutput
   const safetyFindings = clinicalOutput.safety_findings || {};
@@ -319,6 +332,106 @@ export const ClinicalResultsScreen: React.FC = () => {
     });
   };
 
+  // Initiate Consent & Health Record Sharing Workflow
+  const handleInitiateConsent = async (fac?: RecommendedFacility | null) => {
+    setSelectedFacilityForConsent(fac || null);
+    setConsentError(null);
+    setIsConsentModalVisible(true);
+    setIsLoadingConsentData(true);
+
+    try {
+      const docsRes = await documentApi.getDocuments();
+      const rawDocs = docsRes?.data || docsRes || [];
+      const docsList = Array.isArray(rawDocs) ? rawDocs : [];
+      setAvailableDocuments(docsList);
+
+      // Pre-select all available documents so patient can review and confirm
+      const allIds = new Set<string>(
+        docsList.map((d: any) => String(d._id || d.documentCode || d.id))
+      );
+      setSelectedDocIds(allIds);
+    } catch (err: any) {
+      console.warn('Error loading patient documents for consent:', err?.message || err);
+      setAvailableDocuments([]);
+      setSelectedDocIds(new Set());
+    } finally {
+      setIsLoadingConsentData(false);
+    }
+  };
+
+  const toggleDocumentSelection = (docId: string) => {
+    setSelectedDocIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(docId)) {
+        next.delete(docId);
+      } else {
+        next.add(docId);
+      }
+      return next;
+    });
+  };
+
+  const handleConfirmAndSubmitConsent = async () => {
+    try {
+      setIsSubmittingConsent(true);
+      setConsentError(null);
+
+      const targetFacilityName =
+        selectedFacilityForConsent?.facility_name ||
+        (nearbyFacilities.length > 0 ? nearbyFacilities[0].facility_name : `${recommendedSpecialty} Clinical Care Unit`);
+
+      const selectedDocList = availableDocuments.filter((d: any) =>
+        selectedDocIds.has(String(d._id || d.documentCode || d.id))
+      );
+
+      const payload = {
+        organizationName: targetFacilityName,
+        facilityName: selectedFacilityForConsent?.facility_name || '',
+        specialty: recommendedSpecialty,
+        purpose: `Pre-consultation clinical assessment and medical records transfer for ${recommendedSpecialty}`,
+        scope: `Pre-Consultation Summary Report, Health Profile, ${selectedDocList.length} verified health documents`,
+        status: 'PENDING',
+        preConsultationReport: {
+          chiefComplaint,
+          duration,
+          severity,
+          riskLevel,
+          riskScore,
+          carePathway,
+          recommendedSpecialty,
+          soapAssessment: soap,
+          doctorQuestions: questions,
+          clinicalSummary,
+          intakeSummary,
+          safetyFindings,
+        },
+        documentsShared: selectedDocList.map((d: any) => ({
+          documentId: String(d._id || d.documentCode || d.id),
+          title: d.title || d.fileName || d.documentType || 'Health Document',
+          type: d.documentType || 'medical_record',
+        })),
+      };
+
+      await consentApi.createConsent(payload);
+
+      setIsConsentModalVisible(false);
+
+      // Transition directly to Electronic Consents screen (Requests -> Pending)
+      (navigation as any).navigate('Main', {
+        screen: 'Consultation',
+        params: {
+          initialSegment: 'Requests',
+          initialSubTab: 'Pending',
+        },
+      });
+    } catch (err: any) {
+      console.warn('Error submitting consent request:', err);
+      setConsentError(err?.message || 'Failed to submit consent request. Please try again.');
+    } finally {
+      setIsSubmittingConsent(false);
+    }
+  };
+
   // Share summary as text
   const handleShare = async () => {
     try {
@@ -431,8 +544,8 @@ export const ClinicalResultsScreen: React.FC = () => {
             style={styles.facilityActionBtn}
             onPress={() => Linking.openURL(`tel:${fac.contact_phone.replace(/[^0-9+]/g, '')}`)}
           >
-            <Ionicons name="call-outline" size={15} color={colors.primary} />
-            <Text style={styles.facilityActionText}>Call Hospital</Text>
+            <Ionicons name="call-outline" size={14} color={colors.primary} />
+            <Text style={styles.facilityActionText}>Call</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -440,8 +553,16 @@ export const ClinicalResultsScreen: React.FC = () => {
           style={[styles.facilityActionBtn, styles.facilityNavBtn, category === 'regional_apex' && styles.apexNavBtn]}
           onPress={() => handleOpenDirectNavigation(fac)}
         >
-          <Ionicons name="navigate-outline" size={15} color="#FFFFFF" />
-          <Text style={styles.facilityNavText}>Start Navigation</Text>
+          <Ionicons name="navigate-outline" size={14} color="#FFFFFF" />
+          <Text style={styles.facilityNavText}>Directions</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.facilityActionBtn, styles.facilityConsultBtn]}
+          onPress={() => handleInitiateConsent(fac)}
+        >
+          <Ionicons name="shield-checkmark" size={14} color="#FFFFFF" />
+          <Text style={styles.facilityConsultBtnText}>Consultation</Text>
         </TouchableOpacity>
       </View>
     </Card>
@@ -870,6 +991,25 @@ export const ClinicalResultsScreen: React.FC = () => {
               {careNav.navigation_explanation ||
                 `Based on clinical intake and risk stratification, ${formatArticle(carePathway)} ${formatPathway(carePathway)} with a specialist in ${recommendedSpecialty} is recommended.`}
             </Text>
+
+            <TouchableOpacity
+              style={styles.pathwayConsentCard}
+              onPress={() => handleInitiateConsent(null)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Start Consultation and Share Records"
+            >
+              <View style={styles.pathwayConsentIconWrap}>
+                <Ionicons name="shield-checkmark" size={22} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pathwayConsentTitle}>Start Consultation & Share Records</Text>
+                <Text style={styles.pathwayConsentSubtitle}>
+                  Authorize pre-consultation summary & health records transfer to {recommendedSpecialty}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
           </Card>
 
           {/* Interactive Specialization-First Hospital Discovery Section */}
@@ -1282,6 +1422,211 @@ export const ClinicalResultsScreen: React.FC = () => {
           style={styles.bottomBtn}
         />
       </View>
+
+      {/* 4. PRE-CONSULTATION CONSENT & HEALTH RECORD SHARING CONFIRMATION MODAL */}
+      <Modal
+        visible={isConsentModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !isSubmittingConsent && setIsConsentModalVisible(false)}
+      >
+        <View style={styles.consentModalOverlay}>
+          <View style={styles.consentModalContent}>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.consentModalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.consentModalHeaderTitle}>Consent & Health Record Sharing</Text>
+                <Text style={styles.consentModalHeaderSubtitle}>
+                  Review summary and confirm profile records before transfer
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => !isSubmittingConsent && setIsConsentModalVisible(false)}
+                style={styles.modalCloseBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Close consent modal"
+              >
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.consentModalBody} showsVerticalScrollIndicator={false}>
+              {/* Recipient Facility / Specialty */}
+              <View style={styles.modalSection}>
+                <Text style={styles.modalSectionLabel}>Recipient Healthcare Facility</Text>
+                <View style={styles.consentRecipientBox}>
+                  <View style={styles.consentRecipientIconWrap}>
+                    <Ionicons name="business" size={20} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.consentRecipientName}>
+                      {selectedFacilityForConsent?.facility_name || (nearbyFacilities.length > 0 ? nearbyFacilities[0].facility_name : `${recommendedSpecialty} Clinical Care Unit`)}
+                    </Text>
+                    <Text style={styles.consentRecipientDept}>
+                      Specialty Department: {recommendedSpecialty}
+                    </Text>
+                    {selectedFacilityForConsent?.address ? (
+                      <Text style={styles.consentRecipientAddress}>{selectedFacilityForConsent.address}</Text>
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+
+              {/* Pre-Consultation Summary Review */}
+              <View style={styles.modalSection}>
+                <Text style={styles.modalSectionLabel}>Pre-Consultation Assessment Summary</Text>
+                <View style={styles.consentSummaryCard}>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryKey}>Chief Complaint:</Text>
+                    <Text style={styles.summaryVal}>{chiefComplaint}</Text>
+                  </View>
+                  {duration ? (
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryKey}>Duration:</Text>
+                      <Text style={styles.summaryVal}>{duration}</Text>
+                    </View>
+                  ) : null}
+                  {severity ? (
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryKey}>Severity / Score:</Text>
+                      <Text style={styles.summaryVal}>{severity}</Text>
+                    </View>
+                  ) : null}
+                  {soap.assessment ? (
+                    <View style={styles.summaryCol}>
+                      <Text style={styles.summaryKey}>Clinical Differential (Doctor SOAP):</Text>
+                      <Text style={styles.summaryDifferentialVal}>{soap.assessment}</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryKey}>Doctor Questions:</Text>
+                    <Text style={styles.summaryVal}>{questions.length} physician questions attached</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Patient Profile Health Records to Share */}
+              <View style={styles.modalSection}>
+                <Text style={styles.modalSectionLabel}>Profile Health Information</Text>
+                <View style={styles.profileInfoCard}>
+                  <View style={styles.profileInfoItem}>
+                    <Ionicons name="medkit-outline" size={15} color={colors.primary} />
+                    <Text style={styles.profileInfoText}>
+                      <Text style={{ fontWeight: 'bold' }}>Past Conditions: </Text>
+                      {pastMedicalConditions.length > 0 ? pastMedicalConditions.join(', ') : 'None documented'}
+                    </Text>
+                  </View>
+                  <View style={styles.profileInfoItem}>
+                    <Ionicons name="alert-circle-outline" size={15} color={colors.warning} />
+                    <Text style={styles.profileInfoText}>
+                      <Text style={{ fontWeight: 'bold' }}>Allergies: </Text>
+                      {allergiesList.length > 0 ? allergiesList.join(', ') : 'No known allergies'}
+                    </Text>
+                  </View>
+                  <View style={styles.profileInfoItem}>
+                    <Ionicons name="flask-outline" size={15} color={colors.primary} />
+                    <Text style={styles.profileInfoText}>
+                      <Text style={{ fontWeight: 'bold' }}>Medications: </Text>
+                      {medicationsList.length > 0 ? medicationsList.map((m: any) => m.name || m).join(', ') : 'None reported'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Health Documents Selection */}
+              <View style={styles.modalSection}>
+                <View style={styles.docSectionHeaderRow}>
+                  <Text style={styles.modalSectionLabel}>Attached Documents & Records</Text>
+                  <Text style={styles.docSelectedCount}>
+                    {selectedDocIds.size} of {availableDocuments.length} Included
+                  </Text>
+                </View>
+                <Text style={styles.docConfirmSubtitle}>
+                  Please review and select the medical documents from your profile you wish to share:
+                </Text>
+
+                {isLoadingConsentData ? (
+                  <View style={styles.loadingDocRow}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.loadingDocText}>Checking health records in your profile...</Text>
+                  </View>
+                ) : availableDocuments.length === 0 ? (
+                  <View style={styles.emptyDocsBox}>
+                    <Ionicons name="document-text-outline" size={22} color={colors.textMuted} />
+                    <Text style={styles.emptyDocsBoxText}>
+                      No external document files uploaded in profile. Your structured Pre-Consultation Summary and Health Profile will be shared.
+                    </Text>
+                  </View>
+                ) : (
+                  availableDocuments.map((doc: any, dIdx: number) => {
+                    const docId = String(doc._id || doc.documentCode || doc.id || dIdx);
+                    const isChecked = selectedDocIds.has(docId);
+                    const title = doc.title || doc.fileName || doc.documentType || `Medical Document #${dIdx + 1}`;
+                    const docType = doc.documentType || 'Health Document';
+
+                    return (
+                      <TouchableOpacity
+                        key={docId}
+                        style={[styles.docItemCard, isChecked && styles.docItemCardChecked]}
+                        onPress={() => toggleDocumentSelection(docId)}
+                        activeOpacity={0.75}
+                      >
+                        <Ionicons
+                          name={isChecked ? 'checkbox' : 'square-outline'}
+                          size={22}
+                          color={isChecked ? colors.primary : colors.textMuted}
+                        />
+                        <View style={{ flex: 1, marginLeft: spacing.xs }}>
+                          <Text style={[styles.docItemTitle, isChecked && styles.docItemTitleChecked]} numberOfLines={1}>
+                            {title}
+                          </Text>
+                          <Text style={styles.docItemMeta}>
+                            {docType} • {doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : 'Profile Record'}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </View>
+
+              {/* Status Notice (Pending HIS Integration) */}
+              <View style={styles.pendingStatusNotice}>
+                <Ionicons name="time-outline" size={20} color="#B45309" style={{ marginTop: 2 }} />
+                <View style={{ flex: 1, marginLeft: spacing.xs }}>
+                  <Text style={styles.pendingStatusNoticeTitle}>Pending State Verification Notice</Text>
+                  <Text style={styles.pendingStatusNoticeBody}>
+                    This consultation request will be created in PENDING status awaiting Hospital Information System (HIS) data transfer integration. Records are encrypted and shared only when you confirm.
+                  </Text>
+                </View>
+              </View>
+
+              {consentError ? (
+                <Text style={styles.consentErrorMessage}>{consentError}</Text>
+              ) : null}
+
+              {/* Action Buttons */}
+              <View style={styles.modalActionButtonsRow}>
+                <Button
+                  title="Cancel"
+                  variant="outline"
+                  onPress={() => setIsConsentModalVisible(false)}
+                  disabled={isSubmittingConsent}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  title={isSubmittingConsent ? 'Creating Request...' : 'Confirm & Submit Request'}
+                  variant="primary"
+                  onPress={handleConfirmAndSubmitConsent}
+                  disabled={isSubmittingConsent}
+                  style={{ flex: 1.4 }}
+                />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 };
@@ -2240,5 +2585,301 @@ const styles = StyleSheet.create({
   },
   bottomBtn: {
     width: '100%',
+  },
+
+  // Facility Consult Action Button
+  facilityConsultBtn: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primaryDark,
+  },
+  facilityConsultBtnText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: '#FFFFFF',
+    marginLeft: 4,
+  },
+
+  // Pathway Consent Card CTA
+  pathwayConsentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    ...shadows.soft,
+  },
+  pathwayConsentIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  pathwayConsentTitle: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  pathwayConsentSubtitle: {
+    fontSize: typography.fontSize.xs,
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+
+  // Modal Styles
+  consentModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  consentModalContent: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
+    maxHeight: '88%',
+    ...shadows.elevated,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: spacing.sm,
+  },
+  consentModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSubtle,
+    marginBottom: spacing.md,
+  },
+  consentModalHeaderTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  consentModalHeaderSubtitle: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    padding: spacing.xs,
+  },
+  consentModalBody: {
+    maxHeight: '100%',
+  },
+  modalSection: {
+    marginBottom: spacing.md,
+  },
+  modalSectionLabel: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textMuted,
+    marginBottom: 4,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  consentRecipientBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  consentRecipientIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.mintWash,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.xs,
+  },
+  consentRecipientName: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  consentRecipientDept: {
+    fontSize: typography.fontSize.xs,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.semiBold,
+    marginTop: 2,
+  },
+  consentRecipientAddress: {
+    fontSize: typography.fontSize.xs - 1,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  consentSummaryCard: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    gap: 6,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryCol: {
+    marginTop: 2,
+  },
+  summaryKey: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.textSecondary,
+  },
+  summaryVal: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  summaryDifferentialVal: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textPrimary,
+    lineHeight: 17,
+    marginTop: 2,
+    backgroundColor: colors.surface,
+    padding: spacing.xs,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  profileInfoCard: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    gap: 6,
+  },
+  profileInfoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  profileInfoText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  docSectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  docSelectedCount: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+  },
+  docConfirmSubtitle: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+    marginTop: 2,
+  },
+  loadingDocRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+  },
+  loadingDocText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+  },
+  emptyDocsBox: {
+    padding: spacing.md,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.sm,
+    alignItems: 'center',
+    gap: 4,
+  },
+  emptyDocsBoxText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  docItemCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    padding: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  docItemCardChecked: {
+    borderColor: colors.primary,
+    backgroundColor: colors.mintWash,
+  },
+  docItemTitle: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.textPrimary,
+  },
+  docItemTitleChecked: {
+    color: colors.primaryDark,
+    fontWeight: typography.fontWeight.bold,
+  },
+  docItemMeta: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  pendingStatusNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  pendingStatusNoticeTitle: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: '#B45309',
+  },
+  pendingStatusNoticeBody: {
+    fontSize: 11,
+    color: '#92400E',
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  consentErrorMessage: {
+    fontSize: typography.fontSize.xs,
+    color: colors.error,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  modalActionButtonsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSubtle,
   },
 });

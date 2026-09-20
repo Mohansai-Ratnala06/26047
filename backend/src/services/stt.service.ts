@@ -42,7 +42,7 @@ export class SttService {
       success: true,
       status: 'ok',
       service: 'Vaidyaarc In-Process Speech-to-Text',
-      model: hasSarvam ? 'saaras:v3' : 'gemini-2.0-flash-audio',
+      model: hasSarvam ? 'saaras:v3' : 'gemini-3.5-flash',
     };
   }
 
@@ -147,7 +147,7 @@ Respond ONLY with a valid JSON object matching this schema:
         };
 
         const response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${geminiKey}`,
           payload,
           {
             headers: { 'Content-Type': 'application/json' },
@@ -169,7 +169,7 @@ Respond ONLY with a valid JSON object matching this schema:
             success: true,
             text: parsed.transcript || '',
             language: parsed.language_code || languageCode || 'unknown',
-            model: 'gemini-2.0-flash-audio',
+            model: 'gemini-3.5-flash',
           };
         }
       } catch (geminiErr: any) {
@@ -329,7 +329,7 @@ export class NmtService {
         "If the text is already in English, output the exact same text. " +
         "Return ONLY the translated English text. Do NOT include any conversational filler, explanations, markdown, or quotation marks.";
 
-      const models = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+      const models = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-latest'];
       for (const model of models) {
         try {
           const payload = {
@@ -446,7 +446,7 @@ export class NmtService {
         `Preserve any essential clinical terms, medication names, or measurements clearly. ` +
         `Return ONLY the translated ${readableTarget} text. Do NOT include any conversational filler, explanations, markdown, or quotation marks.`;
 
-      const models = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+      const models = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-latest'];
       for (const model of models) {
         try {
           const payload = {

@@ -8,7 +8,10 @@ export type MainTabParamList = {
   Home: undefined;
   Records: undefined;
   VoiceAgent: undefined;
-  Consultation: undefined;
+  Consultation: {
+    initialSegment?: 'Requests' | 'Approved';
+    initialSubTab?: 'All' | 'Pending' | 'Denied' | 'Expired';
+  } | undefined;
   Profile: undefined;
 };
 

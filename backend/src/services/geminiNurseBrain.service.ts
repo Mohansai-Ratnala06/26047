@@ -120,7 +120,7 @@ export class GeminiNurseBrainService {
 
   constructor() {
     this.geminiApiKey = process.env.GEMINI_API_KEY;
-    this.primaryModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+    this.primaryModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   }
 
   /**
@@ -324,7 +324,7 @@ Respond with strictly valid JSON only:
       "category": "diagnostic_investigation" | "symptom_management" | "medication_review" | "lifestyle_guidance",
       "rationale": "Why this question is clinically valuable for this specific case"
     }
-  ],
+  ] or null,
   "dashavidha_synthesis": {
     "vikriti": {
       "observations": ["Specific clinical observations of doshic morbidity and Srotas disturbance"],
@@ -352,7 +352,7 @@ Respond with strictly valid JSON only:
       "functional_capacity": "Good" | "Moderate" | "Impaired / Fatigue",
       "note": "Physical endurance capacity"
     }
-  },
+  } or null,
   "pre_consultation_summary": {
     "highlighted_problem": "Focal clinical problem title in English (e.g. Acute Epigastric Burning & Suspected Acid Peptic Disorder, or Acute Lower Extremity Discomfort & Gait Impairment)",
     "hpiSummary": "Concise medical history in English for the doctor",
@@ -360,7 +360,8 @@ Respond with strictly valid JSON only:
     "soap_objective": "Doctor SOAP objective observations, vitals, distress level, and calculated severity score",
     "soap_assessment": "Doctor SOAP clinical assessment and differential considerations",
     "soap_plan": "Doctor SOAP recommended triage plan, diagnostic workup, and dietary precautions"
-  },
+  } or null,
+  "_latency_guideline": "Set pre_consultation_summary, consultation_questions, and dashavidha_synthesis to null on ongoing inquiry turns. Only generate complete SOAP pre_consultation_summary, doctor questions, and dashavidha when consent is granted or report is being prepared.",
   "risk_convergence": {
     "pattern_detected": "boolean - true if any insidious, chronic (>2-3 weeks), or refractory risk trajectory is identified",
     "suspected_risk_nature": "string or null - concise clinical nature of the risk pattern (e.g. '6-month chronic cough with systemic B-symptoms and refractory antibiotic history; rule out pulmonary TB or occult neoplasm')",
@@ -402,6 +403,7 @@ Return strictly valid JSON only.
     const candidateModels = [
       this.primaryModel || 'gemini-3.5-flash-lite',
       'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
       'gemini-3.6-flash',
       'gemini-flash-latest',
     ].filter((v, i, a) => a.indexOf(v) === i);
@@ -424,12 +426,13 @@ Return strictly valid JSON only.
           generationConfig: {
             temperature: 0.2,
             response_mime_type: 'application/json',
+            max_output_tokens: 4096,
           },
         };
 
         const response = await axios.post(url, payload, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 25000,
+          timeout: 18000,
         });
 
         if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
