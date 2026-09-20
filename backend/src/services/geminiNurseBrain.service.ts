@@ -72,8 +72,46 @@ export interface EpisodeClinicalState {
   } | null;
   pendingReportPermission?: boolean;
   clinicalReportGenerated?: boolean;
+  // Adaptive chronic risk probe — tracks conversational outcomes across turns.
+  // Gemini owns clinical reasoning; TypeScript only records what was surfaced.
+  chronicRiskProbe?: {
+    isActive: boolean;
+    detectedChronic: boolean;
+    chronicTrigger: string;
+    alarmSignsFound: string[];       // Signs patient confirmed (enriches doctor report only)
+    priorTreatmentsSummary: string;  // What patient said they've tried (enriches doctor report)
+    riskExplainedToPatient: boolean; // Has the empathetic explanation been delivered?
+    consentRequested: boolean;       // Has consent for the summary been requested?
+  };
   turnCount: number;
   lastUpdated: string;
+}
+
+export function isPlaceholderOrConversationalComplaint(val?: string | null): boolean {
+  if (!val || typeof val !== 'string') return true;
+  const s = val.trim();
+  if (s.length < 2) return true;
+  // Indic script check (Telugu, Devanagari, Tamil, Kannada, Malayalam, Bengali, etc.)
+  if (/[\u0900-\u0D7F]/.test(s)) return true;
+  const lower = s.toLowerCase();
+  if (
+    lower.includes('voice consultation') ||
+    lower.includes('ai triage') ||
+    lower.includes('clinical consultation') ||
+    lower.includes('symptom intake') ||
+    lower.includes('health intake') ||
+    lower.includes('general health assessment') ||
+    lower.includes('clinical evaluation') ||
+    lower === 'symptom' ||
+    lower === 'discomfort' ||
+    lower === 'pain'
+  ) {
+    return true;
+  }
+  if (s.endsWith('.') || s.endsWith('?')) {
+    return true;
+  }
+  return false;
 }
 
 export class GeminiNurseBrainService {
@@ -118,6 +156,9 @@ export class GeminiNurseBrainService {
       '';
     const patientLanguage = input.message.original_language || 'en';
 
+    // 2A. RECALL LONGITUDINAL EPISODE MEMORY (alarm signs, prior care, risk patterns across turns)
+    const longitudinalMemoryBlock = this.buildLongitudinalRiskContext(stateSnapshot);
+
     const systemPrompt = `
 You are the VaidyaArc "Smart Health Companion" — an empathetic, attentive, caring, and clinically knowledgeable friend and personal health guide.
 Your mission is to care for the patient like a warm, supportive companion who looks after their health journey across days.
@@ -137,22 +178,56 @@ CONVERSATIONAL PERSONA & TONE RULES:
 4. NO BRACKETED ENGLISH WORDS IN REGIONAL LANGUAGES:
    - In regional languages (Telugu, Hindi, Tamil, etc.), speak purely and naturally in that script.
    - DO NOT include English translations in parentheses like "(Smart Health Companion)", "(Dhania)", or "(acidity)".
-5. PERMISSION-BASED DOCTOR ESCALATION & REAL-TIME REPORT GENERATION:
-   - NEVER generate or trigger a clinical assessment report after just a single initial symptom or question!
-   - During early intake (while onset, duration, and symptom details are being gathered):
-     -> Focus entirely on compassionate, friendly check-in. Ask ONLY 1 gentle follow-up question.
-     -> Set "request_report_permission": false, "patient_consented_to_report": false.
-   - ONLY when you recognize that the severity is becoming high (severity score >= 60, red flags, high fever, or worsening symptoms):
-     a) Comfort the patient empathetically.
-     b) Inform them gently that their symptoms need direct medical checkup.
-     c) Politely ask for their permission in ${patientLanguage}: "Your fever/discomfort is quite high and needs medical checkup. With your permission, shall I prepare your complete Clinical Assessment & Pre-Consultation Summary now so you can show it to your doctor?"
-     d) Set "request_report_permission": true, "patient_consented_to_report": false.
-   - IF stateSnapshot.pendingReportPermission is true:
-     -> If the patient confirms or agrees ("yes", "please prepare", "okay", "sure", "అవును", "తయారు చేయండి", etc.):
-        Set "patient_consented_to_report": true
-        In nurse_dialogue, warmly inform them: "I have prepared your complete Clinical Assessment Report in real-time. You can preview it below to show your doctor."
-     -> If the patient declines:
-        Set "patient_consented_to_report": false. Continue supportive conversation.
+
+5. CLINICAL ESCALATION & LONGITUDINAL RISK CONVERGENCE PROTOCOL (ALWAYS ACTIVE ACROSS ALL DISEASES):
+   You possess deep clinical acuity to identify both acute emergencies AND insidious, chronic conditions that patients or past episodic consultations often miss.
+
+   A) ACUTE HIGH-RISK PRESENTATIONS:
+      - When severe acute symptoms appear (chest pain, severe breathlessness, stroke signs, sudden severe pain, high acute fever):
+        * Prioritize immediate safety, express comforting reassurance, and recommend immediate physician evaluation.
+        * Set "request_report_permission": true or trigger emergency clinical output.
+
+   B) LONGITUDINAL / INSIDIOUS RISK CONVERGENCE (TB, EARLY CANCERS, OCCULT STROKE/TIA, SILENT CARDIAC/RENAL DECLINE):
+      - CLINICAL BACKGROUND:
+        A critical failure mode in healthcare is episodic fragmentation: a patient with a 6-month chronic cough treats it as a "seasonal cough", visiting doctors intermittently for cough syrups and short antibiotic courses without anyone connecting the dots until late-phase disease (such as Phase-2 pulmonary tuberculosis with cavitation, or bronchogenic carcinoma).
+        Similarly, subtle transient neurological deficits (TIAs), insidious gastrointestinal lesions, or constitutional decline (unexplained weight loss, evening fevers) are frequently ignored.
+      - ALWAYS-ON ADAPTIVE DETECTION (ANY LANGUAGE, ANY PHRASING):
+        Listen attentively in ANY language (${patientLanguage}) for:
+        * Chronicity (> 2-3 weeks, months, recurring episodes, or prolonged duration).
+        * Refractoriness (symptoms persisting despite syrups, home remedies, or prior clinic visits).
+        * Insidious progression or unexplained functional decline.
+      - ADAPTIVE, FLUID INTAKE (ZERO INTERROGATION, NO FIXED TURNS):
+        * DO NOT use a rigid script or count turns. Decide next steps based on CLINICAL SUFFICIENCY.
+        * If a patient shares extensive details in a single message (e.g. mentions 6-month cough, weight loss, evening fevers, and multiple unhelpful doctor visits), DO NOT ask redundant questions! Immediately assimilate their complete story in that turn.
+        * If details are sparse, gently explore missing clinical facets across turns with warmth:
+          1. Trajectory & Duration: How long has it persisted, and is it worsening?
+          2. Cardinal Alarm Symptoms: Gently check for systemic alarm features suited to the body system:
+             • Respiratory/Chest: Low-grade evening fevers, night sweats, unintentional weight loss, loss of appetite, blood flecks in sputum.
+             • Gastrointestinal: Unintended weight loss, swallowing difficulty, dark/tarry stools, persistent vomiting.
+             • Neurological: Transient limb weakness, subtle speech difficulty, visual disturbances, morning headaches.
+             • Cardiac/Vascular: Exertional shortness of breath, orthopnea, bilateral ankle swelling, syncopal episodes.
+             • Systemic/General: Profound unprovoked fatigue, swollen lymph nodes, recurrent infections.
+          3. Prior Medical Care & Fragmented Treatments:
+             • Gently ask if they have consulted clinics or taken antibiotics/medicines/tests (X-ray, blood tests) previously.
+        * Ask ONLY ONE caring question per turn. Never fire a multi-item checklist.
+      - EMPATHETIC, NON-ALARMIST PATIENT DIALOGUE:
+        * In chat with the patient, NEVER frighten them with alarming disease names (STRICTLY FORBIDDEN: "You may have Tuberculosis", "You might have Cancer", "You could be having a stroke").
+        * Instead, explain empathetically:
+          "Dealing with this for so long must be very wearing on you. Because these symptoms have continued for [duration] despite previous medicines, persistent symptoms like this really deserve a proper in-depth medical evaluation to find the root cause early. This is the right time to consult a specialist."
+      - CONSENT-GATED PRE-CONSULTATION SUMMARY:
+        * Politely ask for consent in ${patientLanguage}:
+          "With your permission, shall I prepare your complete Pre-Consultation Summary with your full timeline and details so your doctor has the full picture and nothing gets overlooked?"
+        * Set "request_report_permission": true, "patient_consented_to_report": false.
+        * When the patient confirms ("yes", "please prepare", "okay", "sure", "అవును", "తయారు చేయండి", etc.):
+          - Set "patient_consented_to_report": true.
+          - Inform them warmly: "I have prepared your complete Clinical Assessment Report in real-time. You can preview it below to show your doctor."
+      - HIGH-ACUITY DOCTOR DIFFERENTIAL & INVESTIGATIONS (SOAP REPORT):
+        * While the patient receives comfort, the doctor receives a sharp, unabridged clinical workup.
+        * In "pre_consultation_summary":
+          - "highlighted_problem": State the clinical risk convergence clearly (e.g. "Chronic Refractory Productive Cough (6-Month Course) – Risk Convergence: Rule Out Pulmonary Tuberculosis, Bronchiectasis, Occult Pulmonary Neoplasm").
+          - "soap_assessment": Explicit differential diagnosis synthesizing chronicity, lack of response to prior empiric therapy, and cardinal alarm features.
+          - "soap_plan": Specific high-yield diagnostic investigations to order (e.g. Chest X-ray PA view, Sputum AFB / GeneXpert CBNAAT, CBC with ESR, high-resolution imaging) to prevent the doctor from repeating another routine prescription.
+
 6. UNRELATED NEW PROBLEM DETECTION & PATIENT CONFIRMATION:
    - Compare the patient's statement against the active episode complaint: "${stateSnapshot.chiefComplaint || 'None yet'}".
    - IF the patient is continuing the same issue or reporting remedies/follow-up:
@@ -169,6 +244,8 @@ CONVERSATIONAL PERSONA & TONE RULES:
      -> If the patient says "no" or clarifies it's related:
         Set "confirm_start_new_episode": false
         Continue under the existing episode.
+
+${longitudinalMemoryBlock}
 
 PATIENT & EPISODE CONTEXT:
 - Demographics: Age ${input.patient_profile?.age || 'Unspecified'}, Gender ${input.patient_profile?.sex || 'Unspecified'}
@@ -187,7 +264,7 @@ Respond with strictly valid JSON only:
   "detected_new_complaint": "string or null",
   "confirm_start_new_episode": boolean,
   "extracted_slots": {
-    "chiefComplaint": "string or null",
+    "chiefComplaint": "string or null - A concise, professional clinical complaint in English (e.g. 'Acute Lower Extremity Pain', 'Right Knee Pain', 'Epigastric Burning', 'Persistent Cough'). NEVER output raw conversational phrases or regional non-English script.",
     "onset": "string or null",
     "duration": "string or null",
     "severity_1_to_10": number or null,
@@ -244,12 +321,21 @@ Respond with strictly valid JSON only:
     }
   },
   "pre_consultation_summary": {
-    "highlighted_problem": "Focal clinical problem title (e.g. Acute Epigastric Burning & Suspected Acid Peptic Disorder)",
+    "highlighted_problem": "Focal clinical problem title in English (e.g. Acute Epigastric Burning & Suspected Acid Peptic Disorder, or Acute Lower Extremity Discomfort & Gait Impairment)",
     "hpiSummary": "Concise medical history in English for the doctor",
     "soap_subjective": "Doctor SOAP subjective note capturing patient symptoms, timeline, and triggers",
     "soap_objective": "Doctor SOAP objective observations, vitals, distress level, and calculated severity score",
     "soap_assessment": "Doctor SOAP clinical assessment and differential considerations",
     "soap_plan": "Doctor SOAP recommended triage plan, diagnostic workup, and dietary precautions"
+  },
+  "risk_convergence": {
+    "pattern_detected": "boolean - true if any insidious, chronic (>2-3 weeks), or refractory risk trajectory is identified",
+    "suspected_risk_nature": "string or null - concise clinical nature of the risk pattern (e.g. '6-month chronic cough with systemic B-symptoms and refractory antibiotic history; rule out pulmonary TB or occult neoplasm')",
+    "alarm_features_identified": ["string - specific cardinal alarm symptoms confirmed by patient (e.g. 'evening fevers', 'night sweats', 'weight loss')"],
+    "prior_treatments_noted": "string or null - summary of past clinic visits, syrups, antibiotics, or tests tried by patient",
+    "clinical_evidence_sufficient": "boolean - true if the clinical picture is sufficiently understood to move to empathetic risk explanation and consent",
+    "risk_explained_to_patient": "boolean - true if you delivered the empathetic, non-alarmist risk explanation in nurse_dialogue this turn",
+    "consent_requested": "boolean - true if you asked for permission to generate the Pre-Consultation Summary this turn"
   }
 }
 `;
@@ -268,22 +354,22 @@ ${historyText}
 Patient's Latest Spoken / Written Message:
 "${patientMessageText}"
 
-Analyze this message in the context of the ongoing conversation history.
-Remember:
-- Be a warm, caring friend. Speak in ${patientLanguage}.
-- Ask ONLY 1 simple, gentle check-in question. Zero interrogation.
-- If severity is high (>= 60) or symptoms worsen, advise doctor consultation and ask permission to prepare the Pre-Consultation Summary.
-- Intelligently extract OPQRST slots, remedy outcome, Daśavidha observations, and doctor consultation questions.
-Return valid JSON only.
+Clinical Companion Mission:
+- Empathize warmly in ${patientLanguage}. Ask ONLY 1 simple, gentle check-in question at a time. Zero interrogation.
+- ALWAYS-ON ADAPTIVE RISK CONVERGENCE:
+  • Identify any chronic, insidious, or refractory trajectory (e.g. chronic cough, unresolving weakness, progressive weight loss) in any language.
+  • Evaluate clinical sufficiency adaptively. If the patient already provided rich history in this turn or earlier, immediately synthesize it without asking redundant questions!
+  • If key clinical facets are missing, gently explore trajectory, alarm symptoms, and prior care with compassion.
+  • When risk is established, explain empathetically without alarming disease names, and seek consent to prepare the Pre-Consultation Summary.
+  • In the doctor's pre_consultation_summary, deliver a high-acuity differential (SOAP assessment & targeted investigations).
+Return strictly valid JSON only.
 `;
 
-    // 3. EXECUTE GEMINI CALL WITH MODEL FALLBACK
+    // 3. EXECUTE GEMINI CALL WITH MODEL FALLBACK (Fastest responsive models first)
     const candidateModels = [
-      this.primaryModel,
-      'gemini-3.6-flash',
-      'gemini-3.5-flash',
+      this.primaryModel || 'gemini-3.5-flash-lite',
       'gemini-3.5-flash-lite',
-      'gemini-3.7-flash',
+      'gemini-3.6-flash',
       'gemini-flash-latest',
     ].filter((v, i, a) => a.indexOf(v) === i);
 
@@ -310,7 +396,7 @@ Return valid JSON only.
 
         const response = await axios.post(url, payload, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 25000,
+          timeout: 9000,
         });
 
         if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -352,10 +438,63 @@ Return valid JSON only.
       stateSnapshot.clinicalReportGenerated = true;
     }
 
+    // 3B. MERGE RISK CONVERGENCE & LONGITUDINAL PROBE OUTCOMES
+    // Gemini owns the clinical reasoning across any language; TypeScript persists findings for doctor report
+    const rc = parsedLlm.risk_convergence;
+    if (rc && typeof rc === 'object') {
+      if (rc.pattern_detected || stateSnapshot.chronicRiskProbe?.isActive) {
+        if (!stateSnapshot.chronicRiskProbe) {
+          stateSnapshot.chronicRiskProbe = {
+            isActive: true,
+            detectedChronic: Boolean(rc.pattern_detected),
+            chronicTrigger: rc.suspected_risk_nature || 'Longitudinal risk pattern identified',
+            alarmSignsFound: [],
+            priorTreatmentsSummary: '',
+            riskExplainedToPatient: false,
+            consentRequested: false,
+          };
+        } else {
+          stateSnapshot.chronicRiskProbe.isActive = true;
+          if (rc.suspected_risk_nature) {
+            stateSnapshot.chronicRiskProbe.chronicTrigger = rc.suspected_risk_nature;
+          }
+        }
+
+        if (Array.isArray(rc.alarm_features_identified) && rc.alarm_features_identified.length > 0) {
+          stateSnapshot.chronicRiskProbe.alarmSignsFound = Array.from(
+            new Set([
+              ...stateSnapshot.chronicRiskProbe.alarmSignsFound,
+              ...rc.alarm_features_identified.filter(Boolean),
+            ])
+          );
+        }
+
+        if (rc.prior_treatments_noted && typeof rc.prior_treatments_noted === 'string') {
+          stateSnapshot.chronicRiskProbe.priorTreatmentsSummary = rc.prior_treatments_noted.trim();
+        }
+
+        if (rc.risk_explained_to_patient === true) {
+          stateSnapshot.chronicRiskProbe.riskExplainedToPatient = true;
+        }
+
+        if (rc.consent_requested === true || parsedLlm.request_report_permission === true) {
+          stateSnapshot.chronicRiskProbe.consentRequested = true;
+        }
+      }
+    }
+
     // 4. CUMULATIVE MERGE WITH EPISODE MEMORY (Never erase existing data)
     const extractedSlots = parsedLlm.extracted_slots || {};
-    if (extractedSlots.chiefComplaint && (!stateSnapshot.chiefComplaint || stateSnapshot.chiefComplaint === 'Clinical Consultation')) {
-      stateSnapshot.chiefComplaint = extractedSlots.chiefComplaint;
+    const clinicalComplaintCandidate =
+      (typeof parsedLlm.pre_consultation_summary?.highlighted_problem === 'string' && parsedLlm.pre_consultation_summary.highlighted_problem.trim()) ||
+      (typeof extractedSlots.chiefComplaint === 'string' && extractedSlots.chiefComplaint.trim()) ||
+      null;
+
+    if (
+      clinicalComplaintCandidate &&
+      (!stateSnapshot.chiefComplaint || isPlaceholderOrConversationalComplaint(stateSnapshot.chiefComplaint))
+    ) {
+      stateSnapshot.chiefComplaint = clinicalComplaintCandidate;
     }
 
     stateSnapshot.intakeSlots = {
@@ -426,7 +565,7 @@ Return valid JSON only.
       parsedLlm.symptom_trajectory === 'worsening'
     );
 
-    // 5. DETERMINISTIC STATUTORY AYURVEDIC RETRIEVAL (CCRAS / API-II)
+    // 5. DETERMINISTIC STATUTORY & CLASSICAL AYURVEDIC RETRIEVAL (CCRAS, API-II, Charaka, Sushruta, Ashtanga Hridaya, Sahasrayogam)
     const symptomTerms = [
       stateSnapshot.chiefComplaint || '',
       ...(stateSnapshot.intakeSlots.associatedSymptoms || []),
@@ -733,11 +872,10 @@ CLINICAL SOAP ASSESSMENT:
 
     const isAskingPermission = parsedLlm.request_report_permission === true;
     const patientConsented = parsedLlm.patient_consented_to_report === true || stateSnapshot.clinicalReportGenerated === true;
-    const isIntakeInProgress = stateSnapshot.turnCount <= 1 || (!stateSnapshot.intakeSlots.duration && !isLifeThreateningEmergency);
 
     const shouldGenerateClinicalReport =
       isLifeThreateningEmergency ||
-      (!isAskingPermission && patientConsented && !isIntakeInProgress);
+      (!isAskingPermission && patientConsented);
 
     if (shouldGenerateClinicalReport) {
       stateSnapshot.clinicalReportGenerated = true;
@@ -770,7 +908,41 @@ CLINICAL SOAP ASSESSMENT:
     };
   }
 
+  /**
+   * FORMATS PERSISTENT LONGITUDINAL RISK MEMORY ACROSS TURNS
+   *
+   * Pure memory recall from stateSnapshot — NO regex gating.
+   * If alarm signs, prior treatments, or chronic risk patterns were previously surfaced,
+   * this injects a concise status recap into the prompt so Gemini remembers what the patient
+   * already shared without ever repeating questions or feeling like a cold checklist.
+   */
+  private buildLongitudinalRiskContext(state: EpisodeClinicalState): string {
+    const probe = state.chronicRiskProbe;
+    if (!probe || !probe.isActive) return '';
+
+    const lines: string[] = [];
+    if (probe.chronicTrigger) {
+      lines.push(`• Ongoing risk presentation noted: "${probe.chronicTrigger}"`);
+    }
+    if (Array.isArray(probe.alarmSignsFound) && probe.alarmSignsFound.length > 0) {
+      lines.push(`• Cardinal alarm signs already identified: ${probe.alarmSignsFound.join(', ')}`);
+    }
+    if (probe.priorTreatmentsSummary) {
+      lines.push(`• Prior treatments/care already reported: ${probe.priorTreatmentsSummary}`);
+    }
+    if (probe.riskExplainedToPatient) {
+      lines.push('• Empathetic risk explanation has already been communicated to the patient');
+    }
+    if (probe.consentRequested) {
+      lines.push('• Permission for Pre-Consultation Summary has already been requested — awaiting patient response');
+    }
+
+    if (lines.length === 0) return '';
+    return `\nLONGITUDINAL MEMORY FROM PREVIOUS EPISODE TURNS:\n${lines.join('\n')}\n`;
+  }
+
   private initializeOrMigrateState(
+
     existing: any,
     patientId: string,
     episodeId: string
@@ -792,6 +964,8 @@ CLINICAL SOAP ASSESSMENT:
         remediesOffered: Array.isArray(existing.remediesOffered) ? existing.remediesOffered : [],
         consultationQuestions: Array.isArray(existing.consultationQuestions) ? existing.consultationQuestions : [],
         dashavidhaState: existing.dashavidhaState || {},
+        // Preserve active chronic risk probe across turns
+        chronicRiskProbe: existing.chronicRiskProbe || undefined,
         turnCount: existing.turnCount || 0,
         lastUpdated: existing.lastUpdated || new Date().toISOString(),
       };
@@ -824,6 +998,8 @@ CLINICAL SOAP ASSESSMENT:
       preConsultationReport: existing?.preConsultationReport || null,
       consultationQuestions: existing?.consultationQuestions || [],
       dashavidhaState: existing?.dashavidhaState || {},
+      // Preserve chronic risk probe from prior state if any
+      chronicRiskProbe: existing?.chronicRiskProbe || undefined,
       turnCount: existing?.turnCount || 0,
       lastUpdated: new Date().toISOString(),
     };

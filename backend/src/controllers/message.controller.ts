@@ -43,9 +43,11 @@ export const sendMessage = async (req: Request, res: Response) => {
     const patientLanguage = language || conversation.language || 'en';
 
     // 1. INBOUND NMT TRANSLATION (STT -> Brain):
-    // Translate regional language text (Telugu, Hindi, Tamil, etc.) to clinical English for the Brain
+    // Gemini Brain natively understands Indic languages (Telugu, Hindi, etc.) without redundant pre-translation.
+    // Only invoke external NMT if running in non-Gemini legacy mode.
     let englishContent = content || '';
-    if (content && patientLanguage && !patientLanguage.toLowerCase().startsWith('en')) {
+    const isGeminiEngine = (process.env.CLINICAL_ENGINE_MODE || 'gemini') === 'gemini';
+    if (!isGeminiEngine && content && patientLanguage && !patientLanguage.toLowerCase().startsWith('en')) {
       try {
         englishContent = await nmtService.translateToEnglish(content, patientLanguage);
         console.info(`[NMT Inbound] Translated "${content}" (${patientLanguage}) -> "${englishContent}" (en)`);
@@ -277,22 +279,24 @@ export const sendMessage = async (req: Request, res: Response) => {
       }
     }
 
-    // Auto-update Episode chiefComplaint, triage, and Pre-Consultation Notes
+    // Auto-update Episode chiefComplaint, triage, phase type, and Pre-Consultation Notes
     if (conversation.episodeId) {
-      const snapComplaint =
-        turnResponse.updated_state?.chief_complaint ||
-        turnResponse.clinical_output?.clinical_case?.chief_complaint ||
-        turnResponse.clinical_output?.clinical_summary?.primary_concern;
-      
-      const preConsult = turnResponse.clinical_output?.pre_consultation_report;
-      const severityScore = turnResponse.clinical_output?.severity_score;
-
-      Episode.findById(conversation.episodeId)
-        .then((ep) => {
-          if (!ep) return;
+      try {
+        const ep = await Episode.findById(conversation.episodeId);
+        if (ep) {
           let hasChanges = false;
 
-          // Update chiefComplaint if valid
+          const snapComplaint =
+            turnResponse.clinical_output?.pre_consultation_report?.doctorSummarySOAP?.highlightedProblem ||
+            turnResponse.clinical_output?.clinical_summary?.soap?.highlightedProblem ||
+            turnResponse.updated_state?.chief_complaint ||
+            turnResponse.clinical_output?.clinical_case?.chief_complaint ||
+            turnResponse.clinical_output?.clinical_summary?.primary_concern;
+          
+          const preConsult = turnResponse.clinical_output?.pre_consultation_report;
+          const severityScore = turnResponse.clinical_output?.severity_score;
+
+          // Update chiefComplaint if valid and current is placeholder, conversational, or non-English script
           if (
             typeof snapComplaint === 'string' &&
             snapComplaint.trim().length > 1 &&
@@ -300,18 +304,27 @@ export const sendMessage = async (req: Request, res: Response) => {
             !snapComplaint.toLowerCase().includes('voice consultation')
           ) {
             const formatted = snapComplaint.trim().charAt(0).toUpperCase() + snapComplaint.trim().slice(1);
-            if (
+            const hasIndicScript = /[\u0900-\u0D7F]/.test(ep.chiefComplaint || '');
+            const isPlaceholderOrConversational =
               !ep.chiefComplaint ||
+              hasIndicScript ||
               ep.chiefComplaint.toLowerCase().includes('voice consultation') ||
               ep.chiefComplaint.toLowerCase().includes('ai triage') ||
-              ep.chiefComplaint.trim() === 'symptom'
-            ) {
+              ep.chiefComplaint.toLowerCase().includes('clinical consultation') ||
+              ep.chiefComplaint.toLowerCase().includes('symptom intake') ||
+              ep.chiefComplaint.toLowerCase().includes('health intake') ||
+              ep.chiefComplaint.trim().toLowerCase() === 'symptom' ||
+              ep.chiefComplaint.trim().toLowerCase() === 'pain' ||
+              ep.chiefComplaint.endsWith('.') ||
+              ep.chiefComplaint.endsWith('?');
+
+            if (isPlaceholderOrConversational) {
               ep.chiefComplaint = formatted;
               hasChanges = true;
             }
           }
 
-          // Update clinical triage level based on severity
+          // Update clinical triage level and transition phase type based on severity escalation
           if (severityScore != null) {
             const level =
               turnResponse.immediate_attention_required || severityScore >= 80
@@ -328,6 +341,9 @@ export const sendMessage = async (req: Request, res: Response) => {
             };
             if (level === 'urgent' || level === 'high') {
               ep.status = 'escalated';
+              ep.type = level === 'urgent' ? 'emergency' : 'consultation';
+            } else if (turnResponse.clinical_output?.consultation_recommended) {
+              ep.type = 'consultation';
             }
             hasChanges = true;
           }
@@ -366,10 +382,12 @@ Remedies Attempted: ${preConsult.remediesTried?.join(', ') || 'None'}`;
           }
 
           if (hasChanges) {
-            ep.save().catch(() => {});
+            await ep.save();
           }
-        })
-        .catch(() => {});
+        }
+      } catch (epUpdateErr: any) {
+        console.warn('[MessageController] Episode update error:', epUpdateErr.message);
+      }
     }
 
     // 8. Return response to mobile client with translated content, english original, metadata, and speech audio

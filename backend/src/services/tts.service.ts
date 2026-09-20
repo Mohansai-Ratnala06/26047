@@ -25,8 +25,21 @@ export class TtsService {
   /**
    * Normalize incoming language codes (e.g. 'te', 'telugu', 'te-IN')
    * into Sarvam-compliant BCP-47 language codes.
+   * Also auto-detects Indic Unicode script directly from text to prevent mismatch errors.
    */
-  public normalizeLanguageCode(lang?: string | null): string {
+  public normalizeLanguageCode(lang?: string | null, text?: string | null): string {
+    if (text) {
+      if (/[\u0C00-\u0C7F]/.test(text)) return 'te-IN'; // Telugu
+      if (/[\u0900-\u097F]/.test(text)) return 'hi-IN'; // Hindi
+      if (/[\u0B80-\u0BFF]/.test(text)) return 'ta-IN'; // Tamil
+      if (/[\u0C80-\u0CFF]/.test(text)) return 'kn-IN'; // Kannada
+      if (/[\u0D00-\u0D7F]/.test(text)) return 'ml-IN'; // Malayalam
+      if (/[\u0980-\u09FF]/.test(text)) return 'bn-IN'; // Bengali
+      if (/[\u0A80-\u0AFF]/.test(text)) return 'gu-IN'; // Gujarati
+      if (/[\u0A00-\u0A7F]/.test(text)) return 'pa-IN'; // Punjabi
+      if (/[\u0B00-\u0B7F]/.test(text)) return 'od-IN'; // Odia
+    }
+
     if (!lang) return 'en-IN';
     const lower = lang.toLowerCase().trim();
 
@@ -70,7 +83,7 @@ export class TtsService {
       throw new Error('TTS text cannot be empty.');
     }
 
-    const languageCode = this.normalizeLanguageCode(rawLanguage);
+    const languageCode = this.normalizeLanguageCode(rawLanguage, cleanText);
     const model = 'bulbul:v3';
 
     try {

@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '../../theme';
 import { Badge, Button, LoadingState, ErrorState } from '../../components';
 import { useTranslation } from '../../i18n';
+import { useFocusEffect } from '@react-navigation/native';
 import { apiClient } from '../../api/apiClient';
 import { episodeApi, TimelineEpisode } from '../../api/episodeApi';
 import { documentApi } from '../../api/documentApi';
@@ -301,7 +302,10 @@ export const RecordsScreen: React.FC = () => {
       if (isPullToRefresh) {
         setRefreshing(true);
       } else {
-        setLoading(true);
+        setRecords((curr) => {
+          if (curr.length === 0) setLoading(true);
+          return curr;
+        });
       }
       setError(null);
 
@@ -631,9 +635,12 @@ export const RecordsScreen: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    fetchRecords();
-  }, [fetchRecords]);
+  // Real-time automatic re-fetch whenever the user navigates/returns to the Records screen
+  useFocusEffect(
+    useCallback(() => {
+      fetchRecords(false);
+    }, [fetchRecords])
+  );
 
   // ==========================================
   // Filtering & Search

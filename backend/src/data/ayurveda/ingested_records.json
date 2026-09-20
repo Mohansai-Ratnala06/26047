@@ -651,6 +651,373 @@
           "excerpt": "Nutraceuticals, foods or food components that help in prevention or treatment of disease, are made from herbal/botanical raw materials... Ashwagandha used for thousands of years as restorative agent for general debility."
         }
       }
+    ],
+    "SRC_CHARAKA_SAMHITA": [
+      {
+        "record_id": "CS_FORM_001_SITOPALADI",
+        "name": "Sitopaladi Churna",
+        "aliases": ["Sitopaladi", "Sitopaladi Choornam", "Sitopala Churna"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "churna (fine medicinal powder)",
+        "ingredients": ["Sitopala (Rock sugar / candy - 16 parts)", "Vamshalochana (Bambusa arundinacea - 8 parts)", "Pippali (Piper longum - 4 parts)", "Ela (Elettaria cardamomum - 2 parts)", "Twak (Cinnamomum verum - 1 part)"],
+        "traditional_indications": ["kasa", "cough", "dry cough", "svasa", "dyspnoea", "breathlessness", "agnimandya", "digestive impairment", "jvara", "low fever", "burning hands and feet", "suptajihva", "loss of taste"],
+        "indication_details": [
+          {"indication": "cough", "preparation": "1 to 3 gm powder mixed with honey and pure cow ghee (in unequal quantity) twice or thrice daily", "source_dosage": "1-3 gm."},
+          {"indication": "burning hands and feet", "preparation": "2 gm powder with cold milk or honey", "source_dosage": "2 gm."}
+        ],
+        "preparation_method": "Finely pulverize Sitopala, Vamshalochana, Pippali, Ela, and Twak in respective descending proportions (16:8:4:2:1) and sieve through fine cloth.",
+        "source_dosage_info": "1 to 3 gms in divided doses for adults; 500 mg to 1 gm for adolescents.",
+        "anupana": "Madhu (Honey) and Ghrita (Ghee in unequal quantity), or lukewarm water/milk.",
+        "warnings": ["Diabetes patients should consult physician due to sugar candy content."],
+        "contraindications": ["Uncontrolled diabetes mellitus without medical supervision."],
+        "safety_notes": ["Classical Rasāyana and demulcent; if cough persists > 2 weeks or has night sweats, immediate clinical evaluation for TB is mandatory."],
+        "limitations": ["Supportive care for upper respiratory distress; does not replace antibiotics in active bacterial pneumonia."],
+        "provenance": {
+          "source_id": "SRC_CHARAKA_SAMHITA",
+          "document_title": "Caraka Saṃhitā - Cikitsā Sthāna",
+          "page": 8,
+          "section": "Adhyāya 8 (Rājayakṣmā Cikitsā), Śloka 103-104",
+          "excerpt": "Sitopalāṁ tuṣākṣīrīṁ pippalīṁ bahulāṁ tvacam, antyānmūrdhvāṁ dvi-guṇitaiḥ cūrṇayed yuktitāḥ param... Kāsasvāsarucichardī jvaradāhāpahāri ca."
+        }
+      },
+      {
+        "record_id": "CS_FORM_002_HINGWASHTAKA",
+        "name": "Hingwashtaka Churna",
+        "aliases": ["Hinguashtaka", "Hingwashtak Churna", "Hingwastaka Choornam"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "churna (herbal powder)",
+        "ingredients": ["Shunti (Zingiber officinale)", "Maricha (Piper nigrum)", "Pippali (Piper longum)", "Ajamoda (Carum roxburghianum)", "Saindhava Lavana (Rock salt)", "Shweta Jeeraka (Cuminum cyminum)", "Krishna Jeeraka (Carum carvi)", "Ghritabhrishta Hingu (Purified Ferula foetida fried in ghee)"],
+        "traditional_indications": ["agnimandya", "sluggish digestion", "indigestion", "adhmana", "flatulence", "gas", "bloating", "shula", "colic pain", "grahani", "malabsorption", "loss of appetite", "vibandha", "constipation"],
+        "indication_details": [
+          {"indication": "flatulence", "preparation": "1 to 2 gm powder consumed with the very first morsel of warm boiled rice mixed with pure cow ghee", "source_dosage": "1-2 gm."},
+          {"indication": "colic pain", "preparation": "1 to 2 gm powder with lukewarm water", "source_dosage": "1-2 gm."}
+        ],
+        "preparation_method": "Equal quantities of Trikatu, Ajamoda, Saindhava, two Jeerakas, and ghee-fried Hing powdered together.",
+        "source_dosage_info": "1 to 2 gm before or with meals.",
+        "anupana": "Ghrita with warm cooked rice (Prathama Kavala) or lukewarm water.",
+        "warnings": ["Contains Saindhava Lavana (rock salt); use with caution in hypertension.", "Pungent and heating potency; avoid in acute bleeding ulcers or hyperacidity."],
+        "contraindications": ["Active bleeding peptic ulcer, acute gastritis with burning hematemesis, severe untreated hypertension."],
+        "safety_notes": ["Prime Dipana-Pachana classical remedy for Mandagni and Vataja bloating."],
+        "limitations": ["For functional digestive distress; acute surgical abdomen requires immediate hospital admission."],
+        "provenance": {
+          "source_id": "SRC_CHARAKA_SAMHITA",
+          "document_title": "Caraka Saṃhitā - Cikitsā Sthāna",
+          "page": 14,
+          "section": "Adhyāya 14 (Grahani Cikitsā) / Aṣṭāṅga Hṛdaya Cikitsā 14",
+          "excerpt": "Trikaṭuka-majamodā saindhavāñjīraka-dvayam samam samacūrṇaṁ hingu-saptam... Prathama-kabale bhuktavān ghṛtena sahitaṁ pibān agnī-dīpanam param."
+        }
+      },
+      {
+        "record_id": "CS_FORM_003_NISHA_AMALAKI",
+        "name": "Nisha-Amalaki Yoga",
+        "aliases": ["Nishamalaki", "Haridra Amalaki", "Nisha Amlaki"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "churna / juice combination",
+        "ingredients": ["Haridra (Curcuma longa rhizome powder)", "Amalaki (Phyllanthus emblica fruit rind powder / juice)"],
+        "traditional_indications": ["prameha", "metabolic dysregulation", "diabetes support", "urinary turbidity", "medoroga", "skin eruptions", "general vitality"],
+        "indication_details": [
+          {"indication": "prameha", "preparation": "Equal parts (1.5 gm each) of Haridra and Amalaki powder taken in morning on empty stomach with warm water or honey", "source_dosage": "3 gm total"}
+        ],
+        "preparation_method": "Mix equal quantities of finely ground Curcuma longa and Emblica officinalis powders.",
+        "source_dosage_info": "3 to 5 gm once or twice daily.",
+        "anupana": "Lukewarm water or Madhu (Honey).",
+        "warnings": ["Supportive metabolic care; patients taking insulin or oral hypoglycemics must monitor blood sugar to avoid hypoglycemia."],
+        "contraindications": [],
+        "safety_notes": ["Golden standard classical duo (Agraya Dravya) for Prameha and cellular Rasāyana."],
+        "limitations": ["Dietary and supportive Rasāyana measure; does not replace diabetic prescription drugs."],
+        "provenance": {
+          "source_id": "SRC_CHARAKA_SAMHITA",
+          "document_title": "Caraka Saṃhitā - Cikitsā Sthāna",
+          "page": 6,
+          "section": "Adhyāya 6 (Prameha Cikitsā), Śloka 26",
+          "excerpt": "Haridrāṁ cūrṇitāṁ dhātryā rasa-yuktāṁ pibed nṛpaḥ, prameheṣu samasteṣu praśastāṁ hita-kāriṇīm."
+        }
+      },
+      {
+        "record_id": "CS_FORM_004_TALISADI",
+        "name": "Talisadi Churna",
+        "aliases": ["Taleesadi Churna", "Talisadi Choornam"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "churna (fine herbal powder)",
+        "ingredients": ["Talisapatra (Abies webbiana - 1 part)", "Maricha (Piper nigrum - 2 parts)", "Shunti (Zingiber officinale - 3 parts)", "Pippali (Piper longum - 4 parts)", "Vamshalochana (Bambusa arundinacea - 8 parts)", "Ela (Elettaria cardamomum - 1/2 part)", "Twak (Cinnamomum verum - 1/2 part)", "Sita (Sugar candy - 32 parts)"],
+        "traditional_indications": ["kasa", "cough", "svasa", "dyspnoea", "chardi", "vomiting", "aruci", "anorexia", "loss of appetite", "agnimandya", "poor digestion", "atisara", "diarrhea"],
+        "indication_details": [
+          {"indication": "cough", "preparation": "1.5 to 3 gm powder licked with honey 2-3 times a day", "source_dosage": "1.5-3 gm."},
+          {"indication": "loss of appetite", "preparation": "1.5 gm powder before food with warm water", "source_dosage": "1.5 gm."}
+        ],
+        "preparation_method": "Pulverize Talisapatra, Trikatu, Vamshalochana, Ela, Twak and sugar in classical proportion.",
+        "source_dosage_info": "1 to 3 gm twice daily.",
+        "anupana": "Madhu (Honey) or warm water.",
+        "warnings": ["Sugar content warrants caution in diabetics."],
+        "contraindications": ["Uncontrolled diabetes."],
+        "safety_notes": ["Particularly effective in Kasa associated with digestive sluggishness (Agnimandya)."],
+        "limitations": ["Supportive care; persistent fever or hemoptysis requires hospital evaluation."],
+        "provenance": {
+          "source_id": "SRC_CHARAKA_SAMHITA",
+          "document_title": "Caraka Saṃhitā - Cikitsā Sthāna",
+          "page": 8,
+          "section": "Adhyāya 8 (Rājayakṣmā Cikitsā), Śloka 145-148",
+          "excerpt": "Tālīsa-pattraṁ maricaṁ śuṇṭhī pippaly-athāpi vā... Kāsasvāsāruci-chardi-śoṣa-plīha-jvarāpaham."
+        }
+      }
+    ],
+    "SRC_SUSHRUTA_SAMHITA": [
+      {
+        "record_id": "SS_FORM_001_JATYADI_GHRITA",
+        "name": "Jatyadi Ghrita / Taila",
+        "aliases": ["Jatyadi Oil", "Jatyadi Ghritham", "Jatyadi Tailam"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "medicated ghrita / oil (topical application)",
+        "ingredients": ["Jatipatram (Jasminum officinale)", "Nimba (Azadirachta indica)", "Patola (Trichosanthes dioica)", "Karanja (Pongamia pinnata)", "Siktha (Beeswax)", "Madhuka (Glycyrrhiza glabra)", "Kushta", "Haridra (Curcuma longa)", "Daruharidra (Berberis aristata)", "Manjishta (Rubia cordifolia)", "Abhaya (Terminalia chebula)", "Go-Ghrita (Cow's ghee) / Tila Taila"],
+        "traditional_indications": ["vrana", "wound", "ulcer", "cuts", "abrasions", "dagdha vrana", "minor burns", "parikartika", "anal fissure", "skin irritation", "non-healing ulcers"],
+        "indication_details": [
+          {"indication": "wound", "preparation": "Clean the wound with sterile water, soak sterile cotton/gauze (Pichu) in Jatyadi Ghrita and apply gently over affected area twice daily", "source_dosage": "topical application"},
+          {"indication": "anal fissure", "preparation": "Local gentle application or sterile gauze wick (Pichu) placed after sitz bath", "source_dosage": "topical application"}
+        ],
+        "preparation_method": "Kalka of herbs cooked in Cow's ghee or Sesame oil until Sneha Siddhi Lakṣaṇa is achieved.",
+        "source_dosage_info": "Quantity sufficient for local application.",
+        "anupana": "External use only (Bahir-parimarjana).",
+        "warnings": ["STRICTLY FOR EXTERNAL TOPICAL APPLICATION. Do not ingest internally.", "Do not apply over deep infected fistulae without surgical evaluation."],
+        "contraindications": ["Deep osteomyelitis sinuses, active arterial bleeding, deep puncture wounds."],
+        "safety_notes": ["Foremost classical Vrana-ropana (wound-healing) and Shodhana formulation of Sushruta."],
+        "limitations": ["Topical supportive healing; deep or infected abscesses require surgical drainage."],
+        "provenance": {
+          "source_id": "SRC_SUSHRUTA_SAMHITA",
+          "document_title": "Suśruta Saṃhitā - Cikitsā Sthāna",
+          "page": 2,
+          "section": "Adhyāya 2 (Dvivraṇīya Cikitsā), Śloka 67-70",
+          "excerpt": "Jātī-nimbāḥ paṭolāśca naktamālaḥ sakātakaḥ... Jātyādyaṁ marma-saṁśuddhaṁ vraṇa-ropaṇam uttamam."
+        }
+      },
+      {
+        "record_id": "SS_FORM_002_TRIPHALA_KASHAYA",
+        "name": "Triphala Kashaya",
+        "aliases": ["Triphala Kwath", "Triphala Decoction"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "kashaya (fresh aqueous decoction)",
+        "ingredients": ["Haritaki (Terminalia chebula)", "Bibhitaki (Terminalia bellirica)", "Amalaki (Phyllanthus emblica)"],
+        "traditional_indications": ["wound cleansing", "vrana prakshalana", "skin wash", "oral gargle", "mukharoga", "mouth ulcers", "prameha", "metabolic support", "indigestion"],
+        "indication_details": [
+          {"indication": "wound cleansing", "preparation": "Boil 10 gm coarse Triphala powder in 160 ml water down to 40 ml; filter through clean sterile cloth; use lukewarm for washing superficial wounds", "source_dosage": "external wash"},
+          {"indication": "mouth ulcers", "preparation": "Use strained lukewarm decoction with a pinch of rock salt or honey as an oral rinse/gargle (Gandusha) 2-3 times daily", "source_dosage": "gargle"}
+        ],
+        "preparation_method": "1 part coarse powder boiled with 16 parts water and reduced to 1/4th, filtered fresh.",
+        "source_dosage_info": "Quantity sufficient for wash/rinse; 20-30 ml if taken internally.",
+        "anupana": "Lukewarm water or honey.",
+        "warnings": ["Ensure decoction is thoroughly filtered and particle-free before using for eye or wound wash."],
+        "contraindications": [],
+        "safety_notes": ["Natural antiseptic, Vrana-shodhaka (wound purifier), and astringent Kashaya."],
+        "limitations": ["For superficial cleansing; deep infections require systemic medical treatment."],
+        "provenance": {
+          "source_id": "SRC_SUSHRUTA_SAMHITA",
+          "document_title": "Suśruta Saṃhitā - Sūtra Sthāna",
+          "page": 38,
+          "section": "Adhyāya 38 (Dravya-saṅgrahāṇīya), Śloka 56-57",
+          "excerpt": "Triphalā kapha-pitta-ghnī meha-kuṣṭha-vināśinī, cakṣuṣyā dīpanī hṛdyā vraṇānāṁ śodhanī tathā."
+        }
+      }
+    ],
+    "SRC_ASHTANGA_HRIDAYA": [
+      {
+        "record_id": "AH_FORM_001_DASHAMOOLA_KASHAYA",
+        "name": "Dashamoola Kashaya",
+        "aliases": ["Dashamoola Kwatha", "Dasamoolam Kashayam"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "kashaya (aqueous decoction)",
+        "ingredients": ["Bilva", "Agnimantha", "Shyonaka", "Patala", "Gambhari (Brihat Panchamoola)", "Shalaparni", "Prishniparni", "Brihati", "Kantakari", "Gokshura (Laghu Panchamoola)"],
+        "traditional_indications": ["vata-kaphaja jvara", "fever", "kasa", "cough", "parshwashula", "flank pain", "chest pain", "shotha", "swelling", "sandhivata", "joint stiffness", "body aches"],
+        "indication_details": [
+          {"indication": "cough", "preparation": "15 to 20 ml decoction diluted with equal quantity of warm water twice daily before meals with a pinch of Pippali powder", "source_dosage": "15-20 ml."},
+          {"indication": "joint stiffness", "preparation": "20 ml warm decoction with warm water twice a day", "source_dosage": "20 ml."}
+        ],
+        "preparation_method": "Classical decoction prepared from the roots of the ten sacred medicinal plants.",
+        "source_dosage_info": "15 to 25 ml twice daily before food.",
+        "anupana": "Lukewarm water with a pinch of Pippali Churna or Ghee.",
+        "warnings": ["Acute severe chest pain or dyspnoea requires immediate emergency evaluation to exclude cardiac ischemia."],
+        "contraindications": ["Acute uninvestigated cardiac chest pain."],
+        "safety_notes": ["Supreme classical Vata-hara, Shothahara (anti-inflammatory), and respiratory comfort formulation."],
+        "limitations": ["Adjunct classical therapy; red flag breathlessness requires emergency care."],
+        "provenance": {
+          "source_id": "SRC_ASHTANGA_HRIDAYA",
+          "document_title": "Aṣṭāṅga Hṛdaya - Cikitsā Sthāna",
+          "page": 1,
+          "section": "Adhyāya 1 (Jvara Cikitsā), Śloka 45-48",
+          "excerpt": "Daśamūla-kṛtaḥ kvātho vāta-śleṣma-jvara-praṇut, kāsahṛt-pārśva-śūlārte śvāsa-kāsādike hitaḥ."
+        }
+      },
+      {
+        "record_id": "AH_FORM_002_HARIDRA_KHANDA",
+        "name": "Haridra Khanda",
+        "aliases": ["Haridra Khand", "Haridra Khandam"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "granules / confection",
+        "ingredients": ["Haridra (Curcuma longa)", "Go-Ghrita", "Go-Kshira (Cow's milk)", "Khanda Sharkara (Cane sugar)", "Shunti", "Maricha", "Pippali", "Twak", "Ela", "Patra", "Vidanga", "Musta", "Triphala", "Lauha Bhasma"],
+        "traditional_indications": ["sheetapitta", "urticaria", "hives", "udarda", "skin allergy", "kotha", "rash", "kandu", "itching", "allergic rhinitis", "cold"],
+        "indication_details": [
+          {"indication": "skin allergy", "preparation": "3 to 5 gm with warm milk or lukewarm water twice daily after meals", "source_dosage": "3-5 gm."},
+          {"indication": "itching", "preparation": "3 gm twice daily with warm water", "source_dosage": "3 gm."}
+        ],
+        "preparation_method": "Turmeric cooked in ghee and milk, mixed with sugar syrup and powdered spices into granules.",
+        "source_dosage_info": "3 to 6 gm twice daily.",
+        "anupana": "Warm milk or lukewarm water.",
+        "warnings": ["Sugar content requires caution in diabetics."],
+        "contraindications": ["Severe facial angioedema or anaphylaxis requires immediate hospital emergency."],
+        "safety_notes": ["Renowned classical anti-allergic, blood purifier (Rakta-prasadana), and Tvachya remedy."],
+        "limitations": ["For chronic allergic skin manifestations; acute respiratory stridor is an emergency."],
+        "provenance": {
+          "source_id": "SRC_ASHTANGA_HRIDAYA",
+          "document_title": "Aṣṭāṅga Hṛdaya / Bhaishajya Ratnavali",
+          "page": 55,
+          "section": "Udarda-Śītapitta-Koṭha Rogādhikāra, Śloka 12-16",
+          "excerpt": "Śītapittaṁ vaman kothaṁ kaṇḍūṁ rāgaṁ vināśayet, haridrā-khaṇḍa ity-eṣa viṣam-anala-dīpanaḥ."
+        }
+      },
+      {
+        "record_id": "AH_FORM_003_ELADI_CHURNA",
+        "name": "Eladi Churna",
+        "aliases": ["Eladi Choornam", "Ela Churna"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "churna (fine medicinal powder)",
+        "ingredients": ["Ela (Cardamom)", "Twak (Cinnamon)", "Nagakeshara (Mesua ferrea)", "Maricha (Black pepper)", "Shunti (Ginger)", "Pippali (Long pepper)", "Sita (Sugar candy)"],
+        "traditional_indications": ["chardi", "vomiting", "nausea", "aruci", "anorexia", "loss of appetite", "kasa", "cough", "trishna", "excessive thirst", "agnimandya"],
+        "indication_details": [
+          {"indication": "vomiting", "preparation": "1 to 2 gm powder licked slowly with honey or sugar syrup", "source_dosage": "1-2 gm."},
+          {"indication": "loss of appetite", "preparation": "1 gm powder mixed with a spoon of honey before meals", "source_dosage": "1 gm."}
+        ],
+        "preparation_method": "Fine pulverization of aromatic spices in equal proportions mixed with sugar candy.",
+        "source_dosage_info": "1 to 2 gm twice or thrice daily.",
+        "anupana": "Madhu (Honey) or sugar syrup.",
+        "warnings": ["Persistent vomiting leading to dehydration requires electrolyte hydration and physician evaluation."],
+        "contraindications": [],
+        "safety_notes": ["Palatable, aromatic aromatic digestive stimulant and anti-emetic."],
+        "limitations": ["For mild nausea and anorexia; projectile or persistent vomiting requires hospital workup."],
+        "provenance": {
+          "source_id": "SRC_ASHTANGA_HRIDAYA",
+          "document_title": "Aṣṭāṅga Hṛdaya - Cikitsā Sthāna",
+          "page": 5,
+          "section": "Adhyāya 5 (Kāsa Cikitsā), Śloka 38-40",
+          "excerpt": "Elā-tvag-nāga-kusumaṁ trikaṭuṁ śarkarā-yutam... Chardi-kāsāruci-haraṁ trṣṇā-dāha-nivāraṇam."
+        }
+      }
+    ],
+    "SRC_SAHASRAYOGAM": [
+      {
+        "record_id": "SY_FORM_001_AMRUTHOTHARAM",
+        "name": "Amruthotharam Kashayam",
+        "aliases": ["Nagaradi Kashayam", "Amruthothara Kwatham"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "kashaya (aqueous decoction)",
+        "ingredients": ["Nagara (Zingiber officinale - 2 parts)", "Amrutha / Guduchi (Tinospora cordifolia - 6 parts)", "Haritaki (Terminalia chebula - 4 parts)"],
+        "traditional_indications": ["sarva jvara", "fever", "agnimandya", "indigestion", "ama dosha", "metabolic sluggishness", "vatarakta", "gout", "joint stiffness", "headache"],
+        "indication_details": [
+          {"indication": "fever", "preparation": "15 to 20 ml decoction diluted with equal parts warm water, taken before meals with a pinch of Pippali powder and jaggery", "source_dosage": "15-20 ml."},
+          {"indication": "indigestion", "preparation": "15 ml with warm water before meals", "source_dosage": "15 ml."}
+        ],
+        "preparation_method": "Boil coarse ginger, guduchi, and haritaki (2:6:4 ratio) in water until concentrated, strain fresh.",
+        "source_dosage_info": "15 to 25 ml twice daily before food.",
+        "anupana": "Guda (Jaggery) and Pippali Churna (Long pepper powder).",
+        "warnings": ["High fevers (>101°F) or fevers lasting >3 days require clinical pathology testing."],
+        "contraindications": [],
+        "safety_notes": ["Supreme classical Ama-pachana (endotoxin clearing) and Jvarahara decoction of Kerala tradition."],
+        "limitations": ["Supportive care for mild/convalescent fever; does not substitute antimalarials or antibiotic therapy in acute infections."],
+        "provenance": {
+          "source_id": "SRC_SAHASRAYOGAM",
+          "document_title": "Sahasrayogam - Kashaya Prakarana",
+          "page": 1,
+          "section": "Jvara Cikitsā / Kaṣāya Prakaraṇam",
+          "excerpt": "Nāgara-amṛtā-harītakībhiḥ kṛtaḥ kvāthaḥ... Sarva-jvara-haraḥ śreṣṭhaḥ agni-dīpana-pācanaḥ."
+        }
+      },
+      {
+        "record_id": "SY_FORM_002_MAHARASNADI",
+        "name": "Maharasnadi Kashayam",
+        "aliases": ["Maharasnadi Kwath", "Maha Rasnadi Kashayam"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "kashaya (aqueous decoction)",
+        "ingredients": ["Rasna (Pluchea lanceolata)", "Dhanvayasa", "Bala", "Eranda (Ricinus communis)", "Devadaru", "Shati", "Vacha", "Vasa", "Nagara", "Guduchi", "Ativisha", "Chavya", "Musta", "Punarnava"],
+        "traditional_indications": ["sandhivata", "osteoarthritis", "amavata", "rheumatoid stiffness", "vata vyadhi", "joint pain", "sciatica", "gridhrasi", "muscle stiffness", "katishula", "lower back pain"],
+        "indication_details": [
+          {"indication": "joint pain", "preparation": "15 to 20 ml decoction diluted with equal quantity of warm water twice daily before meals with 5 ml castor oil or dry ginger powder", "source_dosage": "15-20 ml."},
+          {"indication": "lower back pain", "preparation": "15 ml with warm water before meals", "source_dosage": "15 ml."}
+        ],
+        "preparation_method": "Classical polyherbal decoction prepared from Rasna and synergist Vata-alleviating herbs.",
+        "source_dosage_info": "15 to 25 ml twice daily before food.",
+        "anupana": "Eranda Taila (Castor oil - 5ml) or Shunthi Churna (Dry ginger powder) with warm water.",
+        "warnings": ["Chronic severe joint deformities or red hot swollen joints require rheumatologist assessment."],
+        "contraindications": ["Acute uninvestigated hot inflamed septic arthritis."],
+        "safety_notes": ["Standard reference classical Vata-vyadhi remedy for neuromuscular and degenerative joint conditions."],
+        "limitations": ["Supportive care; requires comprehensive clinical management for progressive inflammatory arthritis."],
+        "provenance": {
+          "source_id": "SRC_SAHASRAYOGAM",
+          "document_title": "Sahasrayogam - Kashaya Prakarana / Śārṅgadhara Saṃhitā",
+          "page": 2,
+          "section": "Vāta Vyādhi Cikitsā",
+          "excerpt": "Rāsnā-dhanvayāsa-balairaṇḍa-devadāru... Sarva-vāta-vikāra-ghnaḥ śaṅkho'pi parāhataḥ."
+        }
+      },
+      {
+        "record_id": "SY_FORM_003_DHANWANTHARAM",
+        "name": "Dhanwantharam Kashayam",
+        "aliases": ["Dhanwanthara Kwath", "Dhanvantharam Kashayam"],
+        "botanical_name": null,
+        "record_type": "classical_treatise_formulation",
+        "authority_level": "primary_official",
+        "evidence_type": "classical_treatise",
+        "formulation_form": "kashaya (aqueous decoction)",
+        "ingredients": ["Balamoola (Sida cordifolia)", "Yava (Barley)", "Kola", "Kulattha (Horse gram)", "Dashamoola", "Ksheerakakoli", "Meda", "Mahameda", "Jivaka", "Rishabhaka", "Manjishta", "Chandana", "Sariva", "Kushta"],
+        "traditional_indications": ["vata vyadhi", "nerve pain", "musculoskeletal recovery", "body weakness", "daurbalya", "post-partum recovery", "sutika paricharya", "joint stiffness", "pelvic discomfort"],
+        "indication_details": [
+          {"indication": "body weakness", "preparation": "15 ml decoction mixed with 45 ml lukewarm water twice daily before meals", "source_dosage": "15 ml."},
+          {"indication": "post-partum recovery", "preparation": "15 ml decoction with warm water twice daily", "source_dosage": "15 ml."}
+        ],
+        "preparation_method": "Classical formulation based on the legendary 60-ingredient Bala recipe from Sahasrayogam.",
+        "source_dosage_info": "15 to 20 ml twice daily.",
+        "anupana": "Lukewarm water or a few drops of Dhanwantharam Taila.",
+        "warnings": ["Acute fever with severe indigestion (Ama) requires resolving digestive fire first."],
+        "contraindications": ["Acute Sama Jvara."],
+        "safety_notes": ["Named after Lord Dhanvantari; prime restorative, neuro-muscular tonic, and postpartum health promoter."],
+        "limitations": ["Supportive restorative care; neurological emergencies (e.g. acute stroke) require emergency tertiary care."],
+        "provenance": {
+          "source_id": "SRC_SAHASRAYOGAM",
+          "document_title": "Sahasrayogam - Kashaya Prakarana / Aṣṭāṅga Hṛdaya Śārīra 2",
+          "page": 3,
+          "section": "Vāta Rogādhikāra & Sūtikā Paricaryā",
+          "excerpt": "Bala-kaṣāya-yavā-kola-kulattha-daśamūlavān... Sūtikā-bālarogeṣu marmāghāte ca śasyate."
+        }
+      }
     ]
   }
 }

@@ -37,6 +37,50 @@
       "limitations": "Secondary background review; cannot independently trigger patient-specific clinical recommendations",
       "filename": "ECAM2013-376327.pdf",
       "provenance_policy": "Direct extraction linked to article table/section and page number; marked strictly as secondary evidence"
+    },
+    {
+      "source_id": "SRC_CHARAKA_SAMHITA",
+      "title": "Caraka Saṃhitā",
+      "organization_author": "Agniveśa, revised by Caraka and Dṛḍhabala; Department of AYUSH Recognized Classical Canon",
+      "publication_year": "Classical Treatise",
+      "source_type": "classical_treatise_reference",
+      "authority_level": "primary_official",
+      "intended_use": "Foundational classical authority on Kāyacikitsā (internal medicine), Dīpana-Pācana, and therapeutic formulations",
+      "limitations": "Classical reference guidance; non-binding on modern registered prescribers; not a self-administered prescription",
+      "provenance_policy": "Direct classical extraction linked to Sthāna, Adhyāya, and Śloka verse numbers"
+    },
+    {
+      "source_id": "SRC_SUSHRUTA_SAMHITA",
+      "title": "Suśruta Saṃhitā",
+      "organization_author": "Suśruta, revised by Nāgārjuna; Department of AYUSH Recognized Classical Canon",
+      "publication_year": "Classical Treatise",
+      "source_type": "classical_treatise_reference",
+      "authority_level": "primary_official",
+      "intended_use": "Foundational classical authority on Śalya Tantra (surgery), Vrana (wound management), and external therapies",
+      "limitations": "Classical reference guidance; surgical and procedural applications require clinical supervision",
+      "provenance_policy": "Direct classical extraction linked to Sthāna, Adhyāya, and Śloka verse numbers"
+    },
+    {
+      "source_id": "SRC_ASHTANGA_HRIDAYA",
+      "title": "Aṣṭāṅga Hṛdaya",
+      "organization_author": "Vāgbhaṭa; Department of AYUSH Recognized Classical Canon",
+      "publication_year": "Classical Treatise",
+      "source_type": "classical_treatise_reference",
+      "authority_level": "primary_official",
+      "intended_use": "Comprehensive synthesis of classical Ayurvedic internal medicine, pharmacology, and treatment principles",
+      "limitations": "Classical reference guidance; supportive healthcare information",
+      "provenance_policy": "Direct classical extraction linked to Sthāna, Adhyāya, and Śloka verse numbers"
+    },
+    {
+      "source_id": "SRC_SAHASRAYOGAM",
+      "title": "Sahasrayogam",
+      "organization_author": "Traditional Kerala Classical Formulary; Recognized in First Schedule of Drugs & Cosmetics Act 1940",
+      "publication_year": "Classical Formulary",
+      "source_type": "classical_treatise_reference",
+      "authority_level": "primary_official",
+      "intended_use": "Practical formulary of time-tested Kaṣāyas, Cūrṇas, and Tailas with high empirical clinical efficacy",
+      "limitations": "Classical reference guidance; supportive healthcare information",
+      "provenance_policy": "Direct classical extraction linked to Prakaraṇa and specific Rogādhikāra"
     }
   ],
   "excluded_sources": [

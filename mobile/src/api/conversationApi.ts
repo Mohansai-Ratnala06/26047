@@ -7,6 +7,7 @@ export interface MessagePayload {
   language?: string;
   structuredData?: Record<string, any>;
   audioS3Key?: string;
+  generateAudio?: boolean;
 }
 
 export interface ConversationMessage {

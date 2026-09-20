@@ -57,18 +57,22 @@ function formatYearOrDate(dateStr?: string, resolvedStr?: string): string {
   return startFmt;
 }
 
-function getPhaseLabel(type?: string): string {
+function getPhaseLabel(type?: string, status?: string, triageLevel?: string): string {
+  // Urgent or Emergency care
+  if (type === 'emergency' || triageLevel === 'urgent') {
+    return 'Acute Care Phase';
+  }
+  // Clinical escalation or physician consultation
+  if (type === 'consultation' || status === 'escalated' || triageLevel === 'high') {
+    return 'Consultation Phase';
+  }
   switch (type) {
     case 'symptom':
       return 'Symptom Phase';
-    case 'consultation':
-      return 'Consultation Phase';
     case 'followup':
       return 'Follow-up Phase';
     case 'chronic_condition':
       return 'Chronic Care Phase';
-    case 'emergency':
-      return 'Acute Care Phase';
     default:
       return 'Health Phase';
   }
@@ -125,20 +129,41 @@ export const EpisodeTimelineNode: React.FC<EpisodeTimelineNodeProps> = ({
 
   const dateLabel = formatYearOrDate(episode.startedAt || episode.createdAt, episode.resolvedAt);
   const statusInfo = getStatusBadge(episode.status);
-  const phaseLabel = getPhaseLabel(episode.type);
+  const phaseLabel = getPhaseLabel(episode.type, episode.status, episode.triage?.level);
   const doctorName = episode.doctorId?.name ? `Dr. ${episode.doctorId.name}` : undefined;
   const department = episode.doctorId?.department;
 
   // Resolve genuine patient chief complaint for the primary header line
   const displayChiefComplaint = useMemo(() => {
+    // 1. Check if structured clinical diagnosis/problem exists in clinicalOutput
+    const clinOutput = episode.clinicalOutput as any;
+    const clinicalTitle =
+      clinOutput?.pre_consultation_summary?.highlighted_problem ||
+      clinOutput?.pre_consultation_report?.doctorSummarySOAP?.highlightedProblem ||
+      clinOutput?.clinical_summary?.soap?.highlightedProblem ||
+      clinOutput?.clinical_summary?.primary_concern ||
+      clinOutput?.clinical_case?.chief_complaint;
+
+    if (clinicalTitle && typeof clinicalTitle === 'string' && clinicalTitle.trim().length > 1 && !/[\u0900-\u0D7F]/.test(clinicalTitle)) {
+      return clinicalTitle.trim();
+    }
+
     const raw = episode.chiefComplaint?.trim();
-    const isPlaceholder =
+    const hasIndicScript = /[\u0900-\u0D7F]/.test(raw || '');
+    const isPlaceholderOrConversational =
       !raw ||
+      hasIndicScript ||
       raw.toLowerCase().includes('voice consultation') ||
       raw.toLowerCase().includes('ai triage') ||
-      raw.toLowerCase() === 'symptom';
+      raw.toLowerCase().includes('clinical consultation') ||
+      raw.toLowerCase().includes('symptom intake') ||
+      raw.toLowerCase().includes('health intake') ||
+      raw.toLowerCase() === 'symptom' ||
+      raw.toLowerCase() === 'pain' ||
+      raw.endsWith('.') ||
+      raw.endsWith('?');
 
-    if (!isPlaceholder) {
+    if (!isPlaceholderOrConversational && raw) {
       return raw;
     }
 
@@ -152,12 +177,12 @@ export const EpisodeTimelineNode: React.FC<EpisodeTimelineNodeProps> = ({
       }
     }
 
-    if (episode.clinicalNotes && episode.clinicalNotes.length < 60) {
+    if (episode.clinicalNotes && episode.clinicalNotes.length < 60 && !episode.clinicalNotes.includes('[')) {
       return episode.clinicalNotes;
     }
 
     return 'Clinical Health Intake & Evaluation';
-  }, [episode.chiefComplaint, episode.symptoms, episode.clinicalNotes]);
+  }, [episode.chiefComplaint, episode.clinicalOutput, episode.symptoms, episode.clinicalNotes]);
 
   // Descriptive subtitle to reinforce clinical phase context
   const contextSubtitle = useMemo(() => {

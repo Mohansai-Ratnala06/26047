@@ -21,7 +21,7 @@ export interface AyurvedaKnowledgeRecord {
   name: string;
   aliases: string[];
   botanical_name: string | null;
-  record_type: 'home_remedy' | 'pharmacopoeial_formulation' | 'secondary_literature';
+  record_type: 'home_remedy' | 'pharmacopoeial_formulation' | 'secondary_literature' | 'classical_treatise_formulation';
   authority_level: 'primary_official' | 'secondary';
   evidence_type: string;
   formulation_form: string;
@@ -86,9 +86,15 @@ export class AyurvedaKnowledgeService {
    */
   private loadRecords(): void {
     try {
-      const recordsPath = path.resolve(__dirname, '../data/ayurveda/ingested_records.json');
-      if (!fs.existsSync(recordsPath)) {
-        console.warn('[AyurvedaKnowledgeService] Warning: ingested_records.json not found at', recordsPath);
+      const candidatePaths = [
+        path.resolve(__dirname, '../data/ayurveda/ingested_records.json'),
+        path.resolve(__dirname, '../../src/data/ayurveda/ingested_records.json'),
+        path.resolve(process.cwd(), 'src/data/ayurveda/ingested_records.json'),
+        path.resolve(process.cwd(), 'backend/src/data/ayurveda/ingested_records.json'),
+      ];
+      const recordsPath = candidatePaths.find((p) => fs.existsSync(p));
+      if (!recordsPath) {
+        console.warn('[AyurvedaKnowledgeService] Warning: ingested_records.json not found in candidate paths:', candidatePaths);
         return;
       }
 
@@ -106,7 +112,7 @@ export class AyurvedaKnowledgeService {
 
       this.records = allRecords;
       this.isLoaded = true;
-      console.info(`[AyurvedaKnowledgeService] Successfully loaded ${this.records.length} statutory records (CCRAS & API Part II Vol II).`);
+      console.info(`[AyurvedaKnowledgeService] Successfully loaded ${this.records.length} classical and statutory records (CCRAS, API Part II Vol II, Charaka, Sushruta, Ashtanga Hridaya, Sahasrayogam).`);
     } catch (err: any) {
       console.error('[AyurvedaKnowledgeService] Error loading ingested_records.json:', err.message);
     }
@@ -114,6 +120,10 @@ export class AyurvedaKnowledgeService {
 
   public getRecordCount(): number {
     return this.records.length;
+  }
+
+  public getAllRecords(): AyurvedaKnowledgeRecord[] {
+    return this.records;
   }
 
   /**
@@ -282,15 +292,22 @@ export class AyurvedaKnowledgeService {
         continue;
       }
 
-      // 4.2 Hypertension Contraindication check (e.g. Bhaskaralavana Churna has >14% sodium)
-      if (record.record_id === 'API2_FORM_029_BHASKARALAVANA' && isHypertensive) {
-        blockedReasons.push(`Blocked ${record.name}: High mineral salt content contraindicated in hypertension.`);
+      // 4.2 Hypertension Contraindication check (e.g. Bhaskaralavana Churna has >14% sodium, Hingwashtaka has rock salt)
+      if ((record.record_id === 'API2_FORM_029_BHASKARALAVANA' || record.record_id === 'CS_FORM_002_HINGWASHTAKA') && isHypertensive) {
+        blockedReasons.push(`Blocked ${record.name}: Mineral salt content contraindicated in hypertension.`);
         continue;
       }
 
-      // 4.3 Demographic caution
-      if (isPediatric && record.record_type === 'pharmacopoeial_formulation') {
-        blockedReasons.push(`Blocked ${record.name}: Pharmacopoeial formulations require direct pediatric clinician review.`);
+      // 4.3 Active Acid Peptic Disease / Ulcer Contraindication check for hot pungent formulations
+      const hasActiveHyperacidityOrUlcer = lowerConditions.some((c) => c.includes('ulcer') || c.includes('hyperacidity') || c.includes('acid peptic') || c.includes('gastritis'));
+      if (record.record_id === 'CS_FORM_002_HINGWASHTAKA' && hasActiveHyperacidityOrUlcer) {
+        blockedReasons.push(`Blocked ${record.name}: Hot pungent spices contraindicated in active ulcer / burning hyperacidity.`);
+        continue;
+      }
+
+      // 4.4 Demographic caution (Pediatric < 12 yrs requires direct clinician review for classical/pharmacopoeial formulations)
+      if (isPediatric && (record.record_type === 'pharmacopoeial_formulation' || record.record_type === 'classical_treatise_formulation')) {
+        blockedReasons.push(`Blocked ${record.name}: Classical and pharmacopoeial formulations require direct pediatric clinician review.`);
         continue;
       }
 
@@ -340,7 +357,7 @@ export class AyurvedaKnowledgeService {
         immediate_attention_required: false,
       },
       provenance_sources: Array.from(provenanceSet),
-      disclaimer: 'Ayurveda knowledge in VaidyaArc is grounded strictly in approved government references (API Part II Vol II, CCRAS Home Remedies). Recommendations do not replace physician examination.',
+      disclaimer: 'Ayurveda knowledge in VaidyaArc is grounded strictly in approved statutory & classical references (CCRAS Home Remedies, API Part II Vol II, Caraka Saṃhitā, Suśruta Saṃhitā, Aṣṭāṅga Hṛdaya, Sahasrayogam). Recommendations do not replace physician examination.',
       non_prescription_disclaimer: MANDATORY_NON_PRESCRIPTION_DISCLAIMER,
     };
   }

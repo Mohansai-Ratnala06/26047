@@ -84,6 +84,16 @@ export interface TranslationSchema {
     govtSchemesTitle: string;
     govtSchemesSubtitle: string;
     visitOfficialPortal: string;
+    bloodGroupLabel: string;
+    genderLabel: string;
+    ageLabel: string;
+    patientIdLabel: string;
+    tapToEnlarge: string;
+    scanForOpd: string;
+    noMedicalDataBadge: string;
+    copyAbhaSuccess: string;
+    privacyGuaranteeNotice: string;
+    scanInstruction: string;
   };
   records: {
     myRecordsTitle: string;

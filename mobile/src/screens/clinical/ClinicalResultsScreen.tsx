@@ -280,11 +280,11 @@ export const ClinicalResultsScreen: React.FC = () => {
         '',
         ...(recommendations.length > 0
           ? [
-              'SUPPORTIVE AYURVEDIC HOME CARE (CCRAS/API):',
+              'SUPPORTIVE AYURVEDIC HOME CARE (STATUTORY & CLASSICAL TREATISES):',
               ...recommendations.map(
                 (r: any) =>
                   `• ${r.name || r.remedy_name || r.classical_name || 'Home Remedy'}: ${r.preparation_summary || r.preparation_instructions || ''} (Source: ${
-                    r.provenance?.document_title || 'CCRAS'
+                    r.provenance?.document_title || 'Statutory / Classical Treatise'
                   })`
               ),
               '',
@@ -875,14 +875,14 @@ export const ClinicalResultsScreen: React.FC = () => {
             </Card>
           ) : null}
 
-          {/* Section 4B: Approved Statutory Supportive Home Care */}
+          {/* Section 4B: Approved Classical & Statutory Supportive Care */}
           <Card variant="mintWash" style={styles.remedyDisclaimerCard}>
             <View style={styles.iconTagRow}>
               <Ionicons name="shield-checkmark" size={18} color={colors.primaryDark} />
-              <Text style={styles.remedyDisclaimerTitle}>Approved Supportive Home Care (CCRAS)</Text>
+              <Text style={styles.remedyDisclaimerTitle}>Approved Classical & Statutory Supportive Care</Text>
             </View>
             <Text style={styles.remedyDisclaimerText}>
-              Traditional supportive care reference from the approved VaidyaArc statutory dataset (CCRAS / API Part II). Not a medical prescription. If symptoms persist or worsen, direct physician consultation is required.
+              Traditional supportive care reference grounded strictly in verified statutory repositories and classical treatises (CCRAS, API Part II, Charaka Saṃhitā, Suśruta Saṃhitā, Aṣṭāṅga Hṛdaya, Sahasrayogam). Not a medical prescription. If symptoms persist or worsen, direct physician consultation is required.
             </Text>
           </Card>
 
@@ -901,7 +901,15 @@ export const ClinicalResultsScreen: React.FC = () => {
                       ) : null}
                     </View>
                     <Badge
-                      label={rec.remedy_type ? rec.remedy_type.replace(/_/g, ' ') : 'Home Care'}
+                      label={
+                        rec.remedy_type === 'classical_treatise_formulation'
+                          ? 'Classical Treatise'
+                          : rec.remedy_type === 'statutory_monograph'
+                          ? 'Statutory Monograph'
+                          : rec.remedy_type
+                          ? rec.remedy_type.replace(/_/g, ' ')
+                          : 'Home Care'
+                      }
                       variant="mint"
                       size="sm"
                     />

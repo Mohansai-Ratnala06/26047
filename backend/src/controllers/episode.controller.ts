@@ -63,23 +63,49 @@ function resolvePatientChiefComplaint(
   epConvs: any[],
   epDocs: any[]
 ): { chiefComplaint: string; duration?: string } {
+  // 1. First check if structured clinical assessment/problem exists on the episode itself
+  const epHighlighted =
+    ep.clinicalOutput?.pre_consultation_report?.doctorSummarySOAP?.highlightedProblem ||
+    ep.clinicalOutput?.pre_consultation_summary?.highlighted_problem ||
+    ep.clinicalOutput?.clinical_summary?.soap?.highlightedProblem;
+  if (typeof epHighlighted === 'string' && epHighlighted.trim() && !/[\u0900-\u0D7F]/.test(epHighlighted)) {
+    return { chiefComplaint: epHighlighted.trim() };
+  }
+
   const raw = ep.chiefComplaint ? String(ep.chiefComplaint).trim() : '';
-  const isPlaceholder =
+  const hasIndicScript = /[\u0900-\u0D7F]/.test(raw);
+  const isPlaceholderOrConversational =
     !raw ||
+    hasIndicScript ||
     raw.toLowerCase().includes('voice consultation') ||
     raw.toLowerCase().includes('ai triage') ||
-    raw.toLowerCase() === 'symptom';
+    raw.toLowerCase().includes('clinical consultation') ||
+    raw.toLowerCase().includes('symptom intake') ||
+    raw.toLowerCase().includes('health intake') ||
+    raw.toLowerCase() === 'symptom' ||
+    raw.toLowerCase() === 'pain' ||
+    raw.endsWith('.') ||
+    raw.endsWith('?');
 
-  if (!isPlaceholder) {
+  if (!isPlaceholderOrConversational) {
     return { chiefComplaint: raw };
   }
 
-  // 1. Check conversations in reverse chronological order (newest first)
+  // 2. Check conversations in reverse chronological order (newest first)
   for (const c of epConvs) {
+    const convHighlighted =
+      c.clinicalOutput?.pre_consultation_report?.doctorSummarySOAP?.highlightedProblem ||
+      c.clinicalOutput?.pre_consultation_summary?.highlighted_problem ||
+      c.clinicalOutput?.clinical_summary?.soap?.highlightedProblem;
+    if (typeof convHighlighted === 'string' && convHighlighted.trim() && !/[\u0900-\u0D7F]/.test(convHighlighted)) {
+      return { chiefComplaint: convHighlighted.trim() };
+    }
+
     const snapComplaint = c.stateSnapshot?.chief_complaint;
     if (
       typeof snapComplaint === 'string' &&
       snapComplaint.trim().length > 1 &&
+      !/[\u0900-\u0D7F]/.test(snapComplaint) &&
       !snapComplaint.toLowerCase().includes('fetch whatever records') &&
       !snapComplaint.toLowerCase().includes('voice consultation')
     ) {
@@ -93,17 +119,17 @@ function resolvePatientChiefComplaint(
     }
 
     const clinCaseComplaint = c.clinicalOutput?.clinical_case?.chief_complaint;
-    if (typeof clinCaseComplaint === 'string' && clinCaseComplaint.trim()) {
+    if (typeof clinCaseComplaint === 'string' && clinCaseComplaint.trim() && !/[\u0900-\u0D7F]/.test(clinCaseComplaint)) {
       return { chiefComplaint: clinCaseComplaint.trim() };
     }
 
     const primaryConcern = c.clinicalOutput?.clinical_summary?.primary_concern;
-    if (typeof primaryConcern === 'string' && primaryConcern.trim()) {
+    if (typeof primaryConcern === 'string' && primaryConcern.trim() && !/[\u0900-\u0D7F]/.test(primaryConcern)) {
       return { chiefComplaint: primaryConcern.trim() };
     }
   }
 
-  // 2. Check episode symptoms
+  // 3. Check episode symptoms
   if (Array.isArray(ep.symptoms) && ep.symptoms.length > 0) {
     const symptomNames = ep.symptoms
       .map((s: any) => (typeof s === 'string' ? s : s?.name))
@@ -113,17 +139,17 @@ function resolvePatientChiefComplaint(
     }
   }
 
-  // 3. Check document diagnoses
+  // 4. Check document diagnoses
   for (const d of epDocs) {
-    if (d.extractedData?.diagnosis && typeof d.extractedData.diagnosis === 'string') {
+    if (d.extractedData?.diagnosis && typeof d.extractedData.diagnosis === 'string' && !/[\u0900-\u0D7F]/.test(d.extractedData.diagnosis)) {
       return { chiefComplaint: d.extractedData.diagnosis };
     }
-    if (d.extractedData?.chief_complaint && typeof d.extractedData.chief_complaint === 'string') {
+    if (d.extractedData?.chief_complaint && typeof d.extractedData.chief_complaint === 'string' && !/[\u0900-\u0D7F]/.test(d.extractedData.chief_complaint)) {
       return { chiefComplaint: d.extractedData.chief_complaint };
     }
   }
 
-  // 4. Patient-friendly clinical phase title fallback
+  // 5. Patient-friendly clinical phase title fallback
   return { chiefComplaint: 'General Health Assessment & Triage' };
 }
 
@@ -279,21 +305,44 @@ export const getEpisodes = async (req: Request, res: Response) => {
         const resolved = resolvePatientChiefComplaint(epObj, epConvs, epDocs);
         const resolvedComplaint = resolved.chiefComplaint;
 
-        // Auto-heal placeholder in DB if a genuine complaint was found
-        const wasPlaceholder =
+        // Auto-heal placeholder, conversational text, or non-English script in DB if a genuine complaint was found
+        const hasIndic = /[\u0900-\u0D7F]/.test(ep.chiefComplaint || '');
+        const wasPlaceholderOrConversational =
           !ep.chiefComplaint ||
+          hasIndic ||
           ep.chiefComplaint.toLowerCase().includes('voice consultation') ||
-          ep.chiefComplaint.toLowerCase().includes('ai triage');
-        if (wasPlaceholder && resolvedComplaint && resolvedComplaint !== 'General Health Assessment & Triage') {
+          ep.chiefComplaint.toLowerCase().includes('ai triage') ||
+          ep.chiefComplaint.toLowerCase().includes('clinical consultation') ||
+          ep.chiefComplaint.toLowerCase().includes('symptom intake') ||
+          ep.chiefComplaint.toLowerCase().includes('health intake') ||
+          ep.chiefComplaint.trim().toLowerCase() === 'symptom' ||
+          ep.chiefComplaint.trim().toLowerCase() === 'pain' ||
+          ep.chiefComplaint.endsWith('.') ||
+          ep.chiefComplaint.endsWith('?');
+
+        const dbUpdates: Record<string, any> = {};
+        if (wasPlaceholderOrConversational && resolvedComplaint && resolvedComplaint !== 'General Health Assessment & Triage') {
+          dbUpdates.chiefComplaint = resolvedComplaint;
+        }
+
+        // Auto-heal type/phase if status is escalated but type remained 'symptom'
+        let resolvedType = ep.type;
+        if (ep.status === 'escalated' && ep.type === 'symptom') {
+          resolvedType = ep.triage?.level === 'urgent' ? 'emergency' : 'consultation';
+          dbUpdates.type = resolvedType;
+        }
+
+        if (Object.keys(dbUpdates).length > 0) {
           Episode.updateOne(
             { _id: ep._id },
-            { $set: { chiefComplaint: resolvedComplaint } }
+            { $set: dbUpdates }
           ).exec().catch(() => {});
         }
 
         return {
           ...epObj,
           episodeId: ep._id,
+          type: resolvedType,
           chiefComplaint: resolvedComplaint,
           duration: resolved.duration,
           availableData: {
@@ -416,9 +465,15 @@ export const getEpisodeById = async (req: Request, res: Response) => {
     const hasConsultation =
       hasPhysicianAssessment || (hasDoctor && (hasDoctorNotes || episode.status === 'closed'));
 
+    let resolvedType = episode.type;
+    if (episode.status === 'escalated' && episode.type === 'symptom') {
+      resolvedType = episode.triage?.level === 'urgent' ? 'emergency' : 'consultation';
+    }
+
     const detailedData = {
       ...episode.toObject(),
       episodeId: episode._id,
+      type: resolvedType,
       chiefComplaint: resolved.chiefComplaint,
       duration: resolved.duration,
       availableData: {

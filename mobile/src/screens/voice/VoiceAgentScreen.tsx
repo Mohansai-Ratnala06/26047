@@ -257,7 +257,8 @@ export const VoiceAgentScreen: React.FC = () => {
   const playSpokenAudio = async (base64Audio: string) => {
     try {
       setLastAudioBase64(base64Audio);
-      const audioUri = `${FileSystem.cacheDirectory}vaidya_assistant_tts.wav`;
+      // Generate a unique timestamped URI to prevent OS-level file caching and lock collisions
+      const audioUri = `${FileSystem.cacheDirectory}vaidya_tts_${Date.now()}.wav`;
       await FileSystem.writeAsStringAsync(audioUri, base64Audio, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -282,13 +283,30 @@ export const VoiceAgentScreen: React.FC = () => {
 
     if (base64Audio) {
       await playSpokenAudio(base64Audio);
-    } else if (text) {
+    } else if (text && text.trim()) {
       try {
         setIsSynthesizingTts(true);
         setSttStatus('Synthesizing speech...');
-        const ttsRes = await ttsApi.synthesizeSpeech(text, detectedLanguage);
+
+        // Auto-detect language code based on text characters or detectedLanguage
+        const targetLang = /[\u0C00-\u0C7F]/.test(text)
+          ? 'te-IN'
+          : /[\u0900-\u097F]/.test(text)
+          ? 'hi-IN'
+          : /[\u0B80-\u0BFF]/.test(text)
+          ? 'ta-IN'
+          : /[\u0C80-\u0CFF]/.test(text)
+          ? 'kn-IN'
+          : (detectedLanguage || 'en-IN');
+
+        const ttsRes = await ttsApi.synthesizeSpeech(text, targetLang);
         if (ttsRes.success && ttsRes.data?.audioBase64) {
-          await playSpokenAudio(ttsRes.data.audioBase64);
+          const freshAudio = ttsRes.data.audioBase64;
+          // Cache audio onto message state so subsequent speaker taps are immediate
+          setChatMessages((prev) =>
+            prev.map((msg) => (msg.content === text ? { ...msg, audioBase64: freshAudio } : msg))
+          );
+          await playSpokenAudio(freshAudio);
         }
       } catch (ttsErr: any) {
         console.warn('[VoiceAgentScreen] Speech synthesis failed:', ttsErr?.message || ttsErr);
@@ -604,7 +622,7 @@ export const VoiceAgentScreen: React.FC = () => {
     try {
       let activeConvId = conversationId;
       if (!activeConvId) {
-        const epId = await getOrCreateActiveEpisode(text);
+        const epId = await getOrCreateActiveEpisode();
         const convRes = await conversationApi.createConversation({
           episodeId: epId,
           channel: inputType,
@@ -622,6 +640,7 @@ export const VoiceAgentScreen: React.FC = () => {
         content: text,
         inputType,
         language: language || 'en',
+        generateAudio: activeMode === 'voice' || inputType === 'voice',
       });
 
       if (!messageRes.success || !messageRes.data) {
@@ -671,10 +690,16 @@ export const VoiceAgentScreen: React.FC = () => {
     if (!inputText.trim()) return;
     const textToSend = inputText.trim();
     setInputText('');
-    await dispatchMessageToClinicalBrain(textToSend, 'en', 'text');
+    const lang = /[\u0C00-\u0C7F]/.test(textToSend)
+      ? 'te'
+      : /[\u0900-\u097F]/.test(textToSend)
+      ? 'hi'
+      : (detectedLanguage ? detectedLanguage.substring(0, 2) : 'en');
+    await dispatchMessageToClinicalBrain(textToSend, lang, 'text');
   };
 
   const handleQuickOptionSelect = async (optionPrompt: string) => {
+    setDetectedLanguage('te-IN');
     await dispatchMessageToClinicalBrain(optionPrompt, 'te', 'text');
   };
 
