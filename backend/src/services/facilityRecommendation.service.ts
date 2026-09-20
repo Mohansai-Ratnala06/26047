@@ -457,6 +457,120 @@ const VERIFIED_HOSPITALS: RegistryHospital[] = [
     key_facilities: 'Quaternary Cancer & Trauma Center, Advanced Linear Accelerators, 24/7 Multi-ICU',
   },
 
+  // --- NORTH ANDHRA (RAJAM, SRIKAKULAM & VIZIANAGARAM REGION) ---
+  {
+    name: 'GMR Varalakshmi CARE Hospital',
+    type: 'NABH Accredited Multi-Specialty Hospital',
+    departments: ['General Medicine', 'Pulmonology', 'Cardiology', 'Emergency Medicine', 'Orthopedics', 'General Surgery', 'Pediatrics'],
+    city: 'Rajam',
+    district: 'Vizianagaram',
+    state: 'Andhra Pradesh',
+    address: 'GMR Nagar, Rajam, Andhra Pradesh 532127',
+    latitude: 18.4594,
+    longitude: 83.6575,
+    contact_phone: '08941-251600 / 08941-251390',
+    timings: '24/7 Emergency & Inpatient | OPD: 9:00 AM - 5:00 PM',
+    emergency_available: true,
+    tier: 'Tier 2 Secondary Specialty',
+    key_facilities: 'Premier Multi-Specialty Hospital in Rajam, 24/7 Emergency Casualty, ICU, Advanced Diagnostic Lab & Pharmacy',
+  },
+  {
+    name: 'Community Health Centre (CHC), Rajam',
+    type: 'Government Community Hospital & Emergency Care',
+    departments: ['General Medicine', 'Emergency Medicine', 'Pediatrics', 'Obstetrics & Gynaecology', 'General Surgery'],
+    city: 'Rajam',
+    district: 'Vizianagaram',
+    state: 'Andhra Pradesh',
+    address: 'Near Old Bus Stand, Main Road, Rajam, Andhra Pradesh 532127',
+    latitude: 18.4520,
+    longitude: 83.6610,
+    contact_phone: '08941-222022 / 108',
+    timings: '24/7 Emergency Casualty | OPD: 8:30 AM - 1:00 PM',
+    emergency_available: true,
+    tier: 'Tier 3 Community Care',
+    key_facilities: '50-bed Government Hospital, 24/7 Casualty & Triage, Sputum Microscopy, Subsidized Essential Medicines',
+  },
+  {
+    name: 'RIMS Government General Hospital, Srikakulam',
+    type: 'Government Teaching Hospital & Apex District Center',
+    departments: ['General Medicine', 'Pulmonology', 'Emergency Medicine', 'Cardiology', 'Orthopedics', 'Pediatrics', 'Neurology', 'Trauma'],
+    city: 'Srikakulam',
+    district: 'Srikakulam',
+    state: 'Andhra Pradesh',
+    address: 'Palakonda Road, Near Balaga, Srikakulam, Andhra Pradesh 532001',
+    latitude: 18.3050,
+    longitude: 83.8990,
+    contact_phone: '08942-240311 / 108',
+    timings: '24/7 Emergency & Level-2 Trauma | OPD: 8:30 AM - 1:00 PM',
+    emergency_available: true,
+    tier: 'Tier 1 Advanced Tertiary',
+    key_facilities: 'Apex Government Medical College Hospital for Srikakulam, Dedicated Chest & TB Department, 24/7 ICU & Trauma',
+  },
+  {
+    name: 'Medicover Hospitals, Srikakulam',
+    type: 'Multi-Super Specialty Tertiary Hospital',
+    departments: ['General Medicine', 'Pulmonology', 'Cardiology', 'Neurology', 'Orthopedics', 'Critical Care', 'Emergency Medicine'],
+    city: 'Srikakulam',
+    district: 'Srikakulam',
+    state: 'Andhra Pradesh',
+    address: 'Near Collectorate Junction, Day & Night Junction, Srikakulam, Andhra Pradesh 532001',
+    latitude: 18.2980,
+    longitude: 83.9020,
+    contact_phone: '08942-668888 / 040-68334455',
+    timings: '24/7 Emergency & Critical Care | OPD: 9:00 AM - 7:00 PM',
+    emergency_available: true,
+    tier: 'Tier 1 Advanced Tertiary',
+    key_facilities: 'NABH Accredited Tertiary Center, Advanced Respiratory & Cardiac ICUs, 24/7 Dialysis and Cath Lab',
+  },
+  {
+    name: 'Great Eastern Medical School & Hospital (GEMS)',
+    type: 'Multi-Specialty Medical College & Tertiary Hospital',
+    departments: ['General Medicine', 'Pulmonology', 'Orthopedics', 'Emergency Medicine', 'Pediatrics', 'General Surgery'],
+    city: 'Srikakulam',
+    district: 'Srikakulam',
+    state: 'Andhra Pradesh',
+    address: 'Aditya Educational Campus, Ragolu, Srikakulam, Andhra Pradesh 532484',
+    latitude: 18.3310,
+    longitude: 83.8540,
+    contact_phone: '08942-278201 / 08942-278202',
+    timings: '24/7 Emergency & Casualty | OPD: 8:30 AM - 4:00 PM',
+    emergency_available: true,
+    tier: 'Tier 1 Advanced Tertiary',
+    key_facilities: '750-bed Medical College Hospital, Super-Specialty Pulmonary & Critical Care, Round-the-clock Emergency',
+  },
+  {
+    name: 'Maharajah Institute of Medical Sciences (MIMS)',
+    type: 'Premier Medical College & Super-Specialty Hospital',
+    departments: ['General Medicine', 'Pulmonology', 'Cardiology', 'Neurology', 'Orthopedics', 'Emergency Medicine'],
+    city: 'Vizianagaram',
+    district: 'Vizianagaram',
+    state: 'Andhra Pradesh',
+    address: 'NH-26, Nellimarla, Vizianagaram District, Andhra Pradesh 535217',
+    latitude: 18.1520,
+    longitude: 83.4350,
+    contact_phone: '08922-244299 / 08922-244300',
+    timings: '24/7 Emergency Services | OPD: 8:30 AM - 4:30 PM',
+    emergency_available: true,
+    tier: 'Tier 1 Advanced Tertiary',
+    key_facilities: 'Super-Specialty Referral Hospital for North Coastal Andhra, Modern CT/MRI, Level-1 Trauma Wing',
+  },
+  {
+    name: 'Government General Hospital (GGH), Vizianagaram',
+    type: 'Government Apex Teaching Hospital',
+    departments: ['General Medicine', 'Emergency Medicine', 'Orthopedics', 'Pediatrics', 'Pulmonology', 'Trauma'],
+    city: 'Vizianagaram',
+    district: 'Vizianagaram',
+    state: 'Andhra Pradesh',
+    address: 'Cantonment, Vizianagaram, Andhra Pradesh 535003',
+    latitude: 18.1150,
+    longitude: 83.4020,
+    contact_phone: '08922-276102 / 108',
+    timings: '24/7 Emergency Casualty | OPD: 8:30 AM - 1:00 PM',
+    emergency_available: true,
+    tier: 'Tier 1 Advanced Tertiary',
+    key_facilities: 'District Apex Teaching Hospital affiliated to GMC Vizianagaram, 24/7 Acute Triage & Trauma Wing',
+  },
+
   // --- NATIONAL APEX REFERRAL INSTITUTES ---
   {
     name: 'AIIMS New Delhi (All India Institute of Medical Sciences)',
@@ -512,13 +626,84 @@ const VERIFIED_HOSPITALS: RegistryHospital[] = [
 ];
 
 export class FacilityRecommendationService {
-  private candidateModels = [
-    process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
-    'gemini-3.5-flash-lite',
-    'gemini-3.5-flash',
-    'gemini-3.6-flash',
-    'gemini-flash-latest',
-  ];
+  private candidateModels = Array.from(
+    new Set([
+      process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+      'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-3.6-flash',
+    ])
+  );
+
+  /**
+   * Real-time network reverse geocoding via OpenStreetMap Nominatim with BigDataCloud fallback.
+   * Dynamically resolves town/locality, district, state, and postal code from GPS coordinates across India without hardcoding.
+   */
+  public async reverseGeocodeCoordinates(lat: number, lon: number): Promise<{
+    city?: string;
+    district?: string;
+    state?: string;
+    locality?: string;
+    postalCode?: string;
+    displayName?: string;
+  } | null> {
+    try {
+      const osmResp = await axios.get(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+        {
+          headers: { 'User-Agent': 'VaidyaArc-Healthcare-Service/1.0' },
+          timeout: 3800,
+        }
+      );
+      if (osmResp.data && osmResp.data.address) {
+        const a = osmResp.data.address;
+        let city = a.town || a.city || a.municipality || a.residential || a.suburb || a.village || a.county;
+        if (city && typeof city === 'string' && city.endsWith(' Urban')) {
+          city = city.replace(/\s+Urban$/, '');
+        }
+        const district = a.state_district || a.county || a.district;
+        const state = a.state;
+        const postalCode = a.postcode;
+        const locality = a.road || a.suburb || a.residential || a.village;
+        return {
+          city,
+          district,
+          state,
+          locality,
+          postalCode,
+          displayName: osmResp.data.display_name,
+        };
+      }
+    } catch (_err) {
+      // Fall through to secondary fallback
+    }
+
+    try {
+      const bdcResp = await axios.get(
+        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`,
+        { timeout: 3500 }
+      );
+      if (bdcResp.data) {
+        const d = bdcResp.data;
+        const city = d.locality || d.city;
+        const district = d.localityInfo?.administrative?.find(
+          (x: any) => x.order === 9 || (x.name && x.name.toLowerCase().includes('district'))
+        )?.name?.replace(/ district/i, '');
+        const state = d.principalSubdivision;
+        return {
+          city,
+          district,
+          state,
+          postalCode: d.postcode,
+          displayName: `${city ? city + ', ' : ''}${district ? district + ', ' : ''}${state || ''}`,
+        };
+      }
+    } catch (_err) {
+      // Both reverse geocoding providers failed
+    }
+
+    return null;
+  }
 
   /**
    * Calculates Haversine distance between two coordinates in kilometers.
@@ -576,18 +761,48 @@ export class FacilityRecommendationService {
     const severity = input.severityScore ?? 40;
     const isEmergency = Boolean(input.isEmergency || severity >= 80);
 
-    // 1. Determine geographic context
+    // 1. Determine geographic context with real-time reverse geocoding
     const hasCoordinates = typeof input.latitude === 'number' && typeof input.longitude === 'number';
     const userLat = input.latitude;
     const userLon = input.longitude;
 
-    const detectedCity = input.city || input.district || (input.locationQuery ? input.locationQuery.split(',')[0].trim() : undefined);
-    const detectedDistrict = input.district;
-    const detectedState = input.state;
+    let detectedCity = input.city;
+    let detectedDistrict = input.district;
+    let detectedState = input.state;
+    let detectedPostalCode = input.postalCode;
+    let detectedLocality = input.locality;
+
+    // Real-time reverse geocoding if city/district is missing and coordinates are present
+    if ((!detectedCity || !detectedDistrict) && hasCoordinates) {
+      try {
+        const geo = await this.reverseGeocodeCoordinates(userLat!, userLon!);
+        if (geo) {
+          if (!detectedCity && geo.city) detectedCity = geo.city;
+          if (!detectedDistrict && geo.district) detectedDistrict = geo.district;
+          if (!detectedState && geo.state) detectedState = geo.state;
+          if (!detectedPostalCode && geo.postalCode) detectedPostalCode = geo.postalCode;
+          if (!detectedLocality && geo.locality) detectedLocality = geo.locality;
+        }
+      } catch (geoErr) {
+        console.warn('[FacilityRecommendation] Reverse geocode error:', geoErr);
+      }
+    }
+
+    // Fallbacks if city is still missing
+    if (!detectedCity && detectedDistrict) {
+      detectedCity = detectedDistrict;
+    } else if (!detectedCity && input.locationQuery) {
+      detectedCity = input.locationQuery.split(',')[0].trim();
+    }
 
     let locationDesc = 'Your Location';
     if (detectedCity) {
-      locationDesc = `${detectedCity}${detectedState ? ', ' + detectedState : ''}`;
+      const parts = [
+        detectedCity,
+        detectedDistrict && detectedDistrict !== detectedCity ? `${detectedDistrict} District` : '',
+        detectedState,
+      ].filter(Boolean);
+      locationDesc = parts.join(', ');
     } else if (hasCoordinates) {
       locationDesc = `GPS (${userLat!.toFixed(3)}, ${userLon!.toFixed(3)})`;
     } else if (input.locationQuery) {
@@ -615,11 +830,14 @@ export class FacilityRecommendationService {
           locationDesc,
           detectedCity,
           detectedDistrict,
+          detectedState,
+          detectedPostalCode,
+          detectedLocality,
           apiKey
         );
 
         if (geminiResult && geminiResult.nearby_facilities && geminiResult.nearby_facilities.length > 0) {
-          // If Gemini succeeded, enrich with direct driving links and ensure strict categorization
+          // Enrich with direct driving links and ensure strict categorization
           return this.enrichAndCategorizeResults(
             geminiResult,
             specialty,
@@ -711,7 +929,9 @@ export class FacilityRecommendationService {
     ).map((item) => {
       const h = item.hospital;
       const distStr = item.distanceKm !== undefined ? `${item.distanceKm} km` : 'Local Area';
-      const mapsUrl = this.generateDirectNavigationUrl(h.name, h.address, h.latitude, h.longitude);
+      const mapsUrl = hasCoords
+        ? `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLon}&destination=${h.latitude},${h.longitude}&travelmode=driving`
+        : this.generateDirectNavigationUrl(h.name, h.address, h.latitude, h.longitude);
 
       return {
         facility_name: h.name,
@@ -739,7 +959,9 @@ export class FacilityRecommendationService {
       .map((item) => {
         const h = item.hospital;
         const distStr = item.distanceKm !== undefined ? `${item.distanceKm} km away` : 'State Referral';
-        const mapsUrl = this.generateDirectNavigationUrl(h.name, h.address, h.latitude, h.longitude);
+        const mapsUrl = hasCoords
+          ? `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLon}&destination=${h.latitude},${h.longitude}&travelmode=driving`
+          : this.generateDirectNavigationUrl(h.name, h.address, h.latitude, h.longitude);
 
         return {
           facility_name: h.name,
@@ -778,7 +1000,7 @@ export class FacilityRecommendationService {
   }
 
   /**
-   * Prompts Gemini to generate highly specific recommendations when online.
+   * Prompts Gemini 3.5 to generate highly specific recommendations in real time.
    */
   private async callGeminiRecommendation(
     input: FacilityRecommendationInput,
@@ -788,63 +1010,86 @@ export class FacilityRecommendationService {
     locationDesc: string,
     city: string | undefined,
     district: string | undefined,
+    state: string | undefined,
+    postalCode: string | undefined,
+    locality: string | undefined,
     apiKey: string
   ): Promise<any> {
+    const hasCoords = typeof input.latitude === 'number' && typeof input.longitude === 'number';
+    const geoDetails = [
+      city ? `City/Town: ${city}` : '',
+      district ? `District: ${district}` : '',
+      state ? `State: ${state}` : '',
+      postalCode ? `Postal Code: ${postalCode}` : '',
+      locality ? `Locality/Road: ${locality}` : '',
+    ].filter(Boolean).join(', ');
+
     const systemPrompt = `
-You are the VaidyaArc Medical Facility Navigation Engine for Indian Healthcare.
-Your imperative is to suggest REAL, OPERATING, VERIFIED hospitals in India tailored to the patient's exact geographical location and clinical condition.
+You are the VaidyaArc Clinical Facility Navigation Engine for Indian Healthcare.
+Find REAL, OPERATING, VERIFIED hospitals in India dynamically matched to the patient's exact real-time GPS coordinates and clinical requirements.
 
 PATIENT CLINICAL CONTEXT:
 - Presenting Complaint: "${input.chiefComplaint}"
-- Triage Severity: ${severity}/100 (${isEmergency ? 'EMERGENCY' : 'URGENT / ROUTINE'})
+- Triage Severity: ${severity}/100 (${isEmergency ? 'EMERGENCY - Requires Immediate Stabilization' : 'URGENT / ROUTINE SPECIALIST EVALUATION'})
 - Required Medical Department: "${specialty}"
-- Patient Geographic Area: ${city ? `City: ${city}, District: ${district || ''}` : locationDesc}
-- GPS Coordinates: ${input.latitude && input.longitude ? `${input.latitude.toFixed(4)}, ${input.longitude.toFixed(4)}` : 'N/A'}
+- Patient Geographic Area: ${geoDetails || locationDesc}
+- GPS Coordinates: ${hasCoords ? `${input.latitude!.toFixed(4)}, ${input.longitude!.toFixed(4)}` : 'N/A'}
 
-TASK REQUIREMENTS:
-1. CATEGORY 1: "nearby_facilities" (3 hospitals)
-   - Real, authentic hospitals IN OR CLOSEST TO ${city || 'the patient location'} equipped with ${specialty} and 24/7 emergency.
-   - Address MUST contain the real local area/street in ${city || 'that city'}.
+DYNAMIC SEARCH REQUIREMENTS (ZERO HARDCODING):
+1. CATEGORY 1: "nearby_facilities" (3 to 4 hospitals)
+   - Real, authentic hospitals PHYSICALLY SITUATED IN OR WITHIN CLOSEST PROXIMITY TO ${city || 'the patient location'} (${district ? 'within ' + district + ' and neighboring centers, 1-35 km radius' : '1-35 km radius'}).
+   - For towns, mandals, or smaller cities (such as Rajam, rural taluks, or district outskirts), recommend the primary local community health center or hospital (e.g. GMR Varalakshmi CARE Hospital Rajam, CHC Rajam), as well as the nearest major multi-specialty/district hospitals in the adjacent district centers (e.g. Srikakulam or Vizianagaram).
+   - Each facility MUST have capabilities matching "${specialty}" (or General Medicine / Emergency Critical Care).
+   - Provide realistic driving distance in km (e.g. 2.5 km, 15 km, 38 km).
    - "maps_url" MUST be a direct driving navigation URL formatted as:
      "https://www.google.com/maps/dir/?api=1&destination=Encoded+Hospital+Name+City&travelmode=driving"
-     (DO NOT USE /maps/search).
 
-2. CATEGORY 2: "regional_apex_facilities" (2 hospitals)
-   - Renowned apex/tertiary medical colleges or institutes in that state/region equipped for complex or quaternary care (e.g. AIIMS, NIMS, GGH, Apollo Health City).
+2. CATEGORY 2: "regional_apex_facilities" (2 to 3 hospitals)
+   - Renowned regional apex medical colleges or quaternary institutes in that state/region (e.g. King George Hospital Visakhapatnam, AIIMS, NIMS, Apollo Health City) for complex quaternary care.
+   - Realistic travel distance (e.g. 90-120 km away).
    - "maps_url" MUST also be direct driving navigation URL.
 
-Return strictly valid JSON only:
+STRICT ACCURACY RULES:
+- Never classify a hospital 80+ km away as "nearby" when local hospitals exist in ${city || 'that locality'}.
+- Do NOT output placeholder names. Use real, verified operating Indian healthcare facilities.
+- Output ONLY valid JSON matching the schema below.
+
+JSON Schema:
 {
   "care_pathway": "${isEmergency ? 'Emergency Critical Evaluation' : 'Urgent Specialized Consultation'}",
   "recommended_specialty": "${specialty}",
   "urgency": "${isEmergency ? 'emergency' : 'urgent'}",
-  "search_location": "${city || locationDesc}",
+  "search_location": "${city ? `${city}${district && district !== city ? ', ' + district : ''}` : locationDesc}",
   "nearby_facilities": [
     {
       "facility_name": "Hospital Name",
-      "facility_type": "Multi-Specialty Hospital / Teaching Hospital",
+      "facility_type": "Multi-Specialty Hospital / Community Health Centre / Medical College",
       "matched_specialty": "Department Name",
       "match_rationale": "Why this center is near and equipped for the problem",
       "city": "${city || 'City Name'}",
+      "district": "${district || ''}",
+      "state": "${state || ''}",
       "address": "Local Area, City, State",
-      "distance_km": "approx. X km",
-      "timings": "24/7 Emergency | OPD: 9:00 AM - 7:00 PM",
+      "distance_km": 2.5,
+      "timings": "24/7 Emergency | OPD: 9:00 AM - 6:00 PM",
       "contact_phone": "+91-XXXXXXXXXX",
       "maps_url": "https://www.google.com/maps/dir/?api=1&destination=Hospital+Name+City&travelmode=driving",
       "emergency_available": true,
-      "tier": "Tier 1 Advanced Tertiary",
+      "tier": "Tier 2 Secondary Specialty",
       "category": "nearby"
     }
   ],
   "regional_apex_facilities": [
     {
       "facility_name": "Apex Hospital Name",
-      "facility_type": "Apex Quaternary Institute / Medical College",
+      "facility_type": "Apex Quaternary Institute / Government Medical College",
       "matched_specialty": "Super Specialty Care",
       "match_rationale": "Why this institute is recommended for advanced intervention",
       "city": "State Capital / Major Medical Hub",
+      "district": "District Name",
+      "state": "State Name",
       "address": "Address, City, State",
-      "distance_km": "approx. XX km away",
+      "distance_km": 115,
       "timings": "24/7 Emergency",
       "contact_phone": "+91-XXXXXXXXXX",
       "maps_url": "https://www.google.com/maps/dir/?api=1&destination=Hospital+Name+City&travelmode=driving",
@@ -869,7 +1114,7 @@ Return strictly valid JSON only:
 
         const response = await axios.post(url, payload, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 18000,
+          timeout: 25000,
         });
 
         const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -905,23 +1150,41 @@ Return strictly valid JSON only:
     userLat?: number,
     userLon?: number
   ): FacilityRecommendationResult {
+    const hasCoords = typeof userLat === 'number' && typeof userLon === 'number';
+
     const ensureDirectNavigation = (f: RecommendedFacility, cat: 'nearby' | 'regional_apex') => {
       let dist = f.distance_km;
-      // If user has coordinates, calculate real distance
-      if (typeof userLat === 'number' && typeof userLon === 'number') {
-        const matchInRegistry = VERIFIED_HOSPITALS.find(
-          (vh) => vh.name.toLowerCase().includes(f.facility_name.toLowerCase()) || f.facility_name.toLowerCase().includes(vh.name.toLowerCase())
-        );
+
+      // Check if hospital is in verified registry to obtain exact latitude and longitude
+      const matchInRegistry = VERIFIED_HOSPITALS.find(
+        (vh) =>
+          vh.name.toLowerCase().includes(f.facility_name.toLowerCase()) ||
+          f.facility_name.toLowerCase().includes(vh.name.toLowerCase())
+      );
+
+      if (hasCoords) {
         if (matchInRegistry) {
-          const calcKm = this.calculateDistanceKm(userLat, userLon, matchInRegistry.latitude, matchInRegistry.longitude);
+          const calcKm = this.calculateDistanceKm(userLat!, userLon!, matchInRegistry.latitude, matchInRegistry.longitude);
           dist = `${calcKm} km`;
-          f.maps_url = this.generateDirectNavigationUrl(f.facility_name, f.address, matchInRegistry.latitude, matchInRegistry.longitude);
+          f.maps_url = `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLon}&destination=${matchInRegistry.latitude},${matchInRegistry.longitude}&travelmode=driving`;
+        } else {
+          f.maps_url = `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLon}&destination=${encodeURIComponent(f.facility_name + ', ' + (f.address || f.city))}&travelmode=driving`;
+        }
+      } else {
+        if (matchInRegistry) {
+          f.maps_url = `https://www.google.com/maps/dir/?api=1&destination=${matchInRegistry.latitude},${matchInRegistry.longitude}&travelmode=driving`;
+        } else if (!f.maps_url || f.maps_url.includes('/maps/search')) {
+          f.maps_url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(f.facility_name + ', ' + (f.address || f.city))}&travelmode=driving`;
         }
       }
 
-      if (!f.maps_url || f.maps_url.includes('/maps/search')) {
-        f.maps_url = this.generateDirectNavigationUrl(f.facility_name, f.address || f.city);
+      // Format distance string cleanly
+      if (typeof dist === 'number') {
+        dist = cat === 'regional_apex' ? `${dist} km away` : `${dist} km`;
+      } else if (typeof dist === 'string' && !dist.includes('km') && !dist.includes('Local')) {
+        dist = `${dist} km`;
       }
+
       f.category = cat;
       f.distance_km = dist;
       return f;

@@ -376,8 +376,8 @@ export class VisionExtractorAgent {
       },
     };
 
-    // Use modern active Gemini vision models (3.5-flash-lite is fastest for multimodal OCR)
-    const models = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-latest'];
+    // Use high-acuity Gemini vision models (gemini-3.5-flash has premier accuracy for document OCR & prescriptions)
+    const models = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-flash-latest'];
     let extractedClinicalData: ExtractedClinicalData | null = null;
     let lastError: string | null = null;
 

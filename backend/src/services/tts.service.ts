@@ -15,11 +15,8 @@ export interface TtsHealthResult {
 }
 
 export class TtsService {
-  private sarvamApiKey: string;
-
-  constructor() {
-    this.sarvamApiKey =
-      process.env.SARVAM_API_KEY || 'sk_o7traexv_jZJHv9LCBg2DkK6P6Dvu5CKR';
+  private get sarvamApiKey(): string {
+    return (process.env.SARVAM_API_KEY || '').trim();
   }
 
   /**
@@ -86,15 +83,20 @@ export class TtsService {
     const languageCode = this.normalizeLanguageCode(rawLanguage, cleanText);
     const model = 'bulbul:v3';
 
+    const apiKey = this.sarvamApiKey;
+    if (!apiKey) {
+      throw new Error('SARVAM_API_KEY is not configured in environment (.env).');
+    }
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     try {
       const endpoint = 'https://api.sarvam.ai/text-to-speech';
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
-          'api-subscription-key': this.sarvamApiKey,
+          'api-subscription-key': apiKey,
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },

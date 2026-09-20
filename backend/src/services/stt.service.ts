@@ -16,13 +16,12 @@ export interface SttHealthResult {
 }
 
 export class SttService {
-  private sarvamApiKey: string;
-  private geminiApiKey: string | undefined;
+  private get sarvamApiKey(): string {
+    return (process.env.SARVAM_API_KEY || '').trim();
+  }
 
-  constructor() {
-    this.sarvamApiKey =
-      process.env.SARVAM_API_KEY || 'sk_o7traexv_jZJHv9LCBg2DkK6P6Dvu5CKR';
-    this.geminiApiKey = process.env.GEMINI_API_KEY;
+  private get geminiApiKey(): string {
+    return (process.env.GEMINI_API_KEY || '').trim();
   }
 
   /**
@@ -192,16 +191,15 @@ export interface NmtTranslationResult {
 }
 
 export class NmtService {
-  private sarvamApiKey: string;
-  private geminiApiKey: string | undefined;
-  private baseUrl: string;
-
-  constructor() {
-    this.sarvamApiKey =
-      process.env.SARVAM_API_KEY || 'sk_o7traexv_jZJHv9LCBg2DkK6P6Dvu5CKR';
-    this.geminiApiKey = process.env.GEMINI_API_KEY;
-    this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
+  private get sarvamApiKey(): string {
+    return (process.env.SARVAM_API_KEY || '').trim();
   }
+
+  private get geminiApiKey(): string {
+    return (process.env.GEMINI_API_KEY || '').trim();
+  }
+
+  private baseUrl: string = 'https://generativelanguage.googleapis.com/v1beta/models';
 
   /**
    * Normalizes arbitrary incoming language codes (e.g. 'te', 'te-IN', 'telugu')

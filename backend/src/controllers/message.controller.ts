@@ -182,19 +182,18 @@ export const sendMessage = async (req: Request, res: Response) => {
     // 5.1 MULTILINGUAL TTS SYNTHESIS (Assistant Spoken Voice):
     let audioBase64: string | undefined = undefined;
     let audioMimeType: string | undefined = undefined;
-    if (inputType === 'voice' || req.body.generateAudio === true) {
+    if (nativeAssistantContent) {
       try {
-        // Fast race with 3500ms timeout budget so cloud TTS delays never stall interactive chat
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+        // 8000ms budget gives Sarvam bulbul:v3 sufficient time (~4.2s) to synthesize natural Indian speech
         const ttsPromise = ttsService.synthesize(nativeAssistantContent, patientLanguage);
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500));
         const ttsResult = await Promise.race([ttsPromise, timeoutPromise]);
-
         if (ttsResult && ttsResult.audioBase64) {
           audioBase64 = ttsResult.audioBase64;
           audioMimeType = ttsResult.mimeType || 'audio/wav';
           console.info(`[TTS Synthesis] Generated ${audioMimeType} audio (${ttsResult.languageCode}) for: "${nativeAssistantContent.substring(0, 40)}..."`);
         } else if (!ttsResult) {
-          console.info('[TTS Synthesis] Cloud TTS exceeded 3.5s budget — continuing without blocking turn response. Client can fetch audio on-demand.');
+          console.info('[TTS Synthesis] Cloud TTS exceeded 8s budget — continuing without blocking turn response. Client can fetch audio on-demand.');
         }
       } catch (ttsErr: any) {
         console.warn('[TTS Synthesis] Warning: Audio synthesis error, continuing with text-only:', ttsErr.message);

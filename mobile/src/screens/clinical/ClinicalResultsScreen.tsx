@@ -247,8 +247,47 @@ export const ClinicalResultsScreen: React.FC = () => {
             if (rev && rev.length > 0) {
               geocoded = rev[0];
             }
-          } catch (geoErr) {
-            console.warn('[ClinicalResults] Reverse geocode notice:', geoErr);
+          } catch (_geoErr) {
+            // Geocoder service may not be available on some Android devices; fall through to network reverse geocoding
+          }
+
+          // Real-time network reverse geocode fallback if device geocoder failed or returned empty
+          if (!geocoded?.city && coords.latitude && coords.longitude) {
+            try {
+              const controller = new AbortController();
+              const timer = setTimeout(() => controller.abort(), 3500);
+              const osmResp = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?lat=${coords.latitude}&lon=${coords.longitude}&format=json`,
+                {
+                  headers: { 'User-Agent': 'VaidyaArc-Mobile/1.0' },
+                  signal: controller.signal,
+                }
+              );
+              clearTimeout(timer);
+              if (osmResp.ok) {
+                const osmData = await osmResp.json();
+                if (osmData?.address) {
+                  const a = osmData.address;
+                  let resolvedCity =
+                    a.town || a.city || a.municipality || a.residential || a.suburb || a.village || a.county;
+                  if (resolvedCity && typeof resolvedCity === 'string' && resolvedCity.endsWith(' Urban')) {
+                    resolvedCity = resolvedCity.replace(/\s+Urban$/, '');
+                  }
+                  geocoded = {
+                    city: resolvedCity,
+                    district: a.state_district || a.county || a.district,
+                    region: a.state,
+                    subregion: a.state_district || a.county,
+                    street: a.road || a.neighbourhood || a.suburb,
+                    postalCode: a.postcode,
+                    name: a.road || resolvedCity,
+                    country: a.country || 'India',
+                  } as any;
+                }
+              }
+            } catch (_err) {
+              // Silently continue; backend will also perform network reverse geocoding
+            }
           }
         }
       }
@@ -1068,7 +1107,7 @@ export const ClinicalResultsScreen: React.FC = () => {
               <Text style={styles.manualLocTitle}>Search Hospitals by City or Town</Text>
               <View style={styles.manualLocInputRow}>
                 <TextInput
-                  placeholder="Enter city (e.g. Guntur, Hyderabad, Vijayawada)..."
+                  placeholder="Enter city, town, or mandal (e.g. Rajam, Srikakulam)..."
                   placeholderTextColor={colors.textMuted}
                   value={customCityQuery}
                   onChangeText={setCustomCityQuery}
@@ -1081,20 +1120,6 @@ export const ClinicalResultsScreen: React.FC = () => {
                 >
                   <Ionicons name="search" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
-              </View>
-              <View style={styles.quickCityRow}>
-                {['Guntur', 'Hyderabad', 'Vijayawada', 'Visakhapatnam', 'Tirupati'].map((cityName) => (
-                  <TouchableOpacity
-                    key={cityName}
-                    style={styles.quickCityPill}
-                    onPress={() => {
-                      setCustomCityQuery(cityName);
-                      handleLocateSpecializedHospitals(cityName);
-                    }}
-                  >
-                    <Text style={styles.quickCityText}>{cityName}</Text>
-                  </TouchableOpacity>
-                ))}
               </View>
             </Card>
           ) : null}

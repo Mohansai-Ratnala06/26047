@@ -277,13 +277,14 @@ export const VoiceAgentScreen: React.FC = () => {
       await setAudioModeAsync({
         allowsRecording: false,
         playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
       });
 
       if (audioStatus.playing) {
         audioPlayer.pause();
       }
 
-      audioPlayer.replace(audioUri);
+      audioPlayer.replace({ uri: audioUri });
       audioPlayer.play();
     } catch (playErr: any) {
       console.warn('[VoiceAgentScreen] Audio playback warning:', playErr?.message || playErr);
@@ -760,6 +761,9 @@ export const VoiceAgentScreen: React.FC = () => {
         const assistantMsgId = turnData.assistantMessage?._id || String(Date.now() + 1);
         setActiveAudioMsgId(assistantMsgId);
         await playSpokenAudio(turnData.audioBase64);
+      } else if (!turnData.audioBase64 && (inputType === 'voice' || activeMode === 'voice') && turnData.assistantMessage?.content) {
+        const assistantMsgId = turnData.assistantMessage?._id || String(Date.now() + 1);
+        handlePlayMessageAudio(assistantMsgId, turnData.assistantMessage.content);
       }
     } catch (brainErr: any) {
       console.error('Brain dispatch error:', brainErr);
