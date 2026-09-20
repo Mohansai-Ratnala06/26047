@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   ScreenContainer,
@@ -83,10 +84,20 @@ const GOVT_SCHEMES: GovtScheme[] = [
     url: 'https://pmmvy.wcd.gov.in/',
   },
   {
-    id: 'npy',
-    name: 'Nikshay Poshan Scheme',
-    badge: 'TB Patient Support',
-    badgeVariant: 'mint',
+    id: 'pmjay-senior',
+    name: 'AB PM-JAY Vay Vandana (70+)',
+    badge: 'Senior Citizens',
+    badgeVariant: 'success',
+    icon: 'heart',
+    ministry: 'National Health Authority (NHA)',
+    description: 'Universal comprehensive health cover of ₹5 Lakh per year for all senior citizens aged 70 years and above, irrespective of family income or economic status.',
+    url: 'https://pmjay.gov.in/',
+  },
+  {
+    id: 'nikshay',
+    name: 'Ni-kshay Poshan Yojana',
+    badge: 'Direct Benefit (DBT)',
+    badgeVariant: 'warning',
     icon: 'nutrition-outline',
     ministry: 'Central TB Division, MoHFW',
     description: 'Direct cash benefit of ₹500/month for nutritional support provided to all registered tuberculosis patients during their clinical treatment.',
@@ -100,56 +111,59 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [patientData, setPatientData] = useState<any>(null);
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
-    const fetchPatient = async () => {
-      try {
-        const res = await patientApi.getMe();
-        if (isMounted && res?.success && res.data) {
-          setPatientData(res.data);
-        }
-      } catch (_) {
-        // Gracefully fallback to auth user
+  // Fetch real-time patient account record from database
+  const fetchPatient = useCallback(async () => {
+    try {
+      const res = await patientApi.getMe();
+      if (res?.success && res.data) {
+        setPatientData(res.data);
       }
-    };
-    fetchPatient();
-    return () => {
-      isMounted = false;
-    };
+    } catch (_) {
+      // Gracefully fallback to auth user
+    }
   }, []);
 
+  // Re-fetch patient record whenever HomeScreen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchPatient();
+    }, [fetchPatient])
+  );
+
+  // Real-time demographic resolution strictly from DB / Auth User (Zero hardcoded fallbacks)
   const dynamicName =
     patientData?.demographics?.firstName
       ? `${patientData.demographics.firstName} ${patientData.demographics.lastName || ''}`.trim()
-      : user?.name || 'Abhitha';
+      : user?.name || 'Citizen';
 
   const dynamicAbha =
     patientData?.identifiers?.abhaId ||
     user?.abhaId ||
-    '91-2526-7373-9171';
+    '';
 
   const dynamicPatientCode =
     patientData?.patientCode ||
-    'PAT-000007';
+    '';
 
   const dynamicBloodGroup =
     patientData?.demographics?.bloodGroup ||
-    'O+';
+    '';
 
   const dynamicGender =
     patientData?.demographics?.gender
       ? patientData.demographics.gender.charAt(0).toUpperCase() +
         patientData.demographics.gender.slice(1).toLowerCase()
-      : 'Female';
+      : '';
 
   const dynamicAge =
-    patientData?.demographics?.age ||
-    26;
+    patientData?.demographics?.age !== undefined && patientData?.demographics?.age !== null
+      ? patientData.demographics.age
+      : '';
 
   const dynamicPhone =
     patientData?.contact?.phone ||
     user?.phone ||
-    '+91 99618 56752';
+    '';
 
   const greetingInfo = getGreeting(dynamicName);
 
@@ -206,6 +220,7 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         gender={dynamicGender}
         age={dynamicAge}
         phone={dynamicPhone}
+        onEditDemographics={() => navigation.navigate('Profile', { openEditDemographics: true })}
       />
 
       {/* 4. AI / Voice Entry Action Button */}
@@ -229,7 +244,7 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         badgeVariant="warning"
         iconName="person-circle-outline"
         iconColor="#D97706"
-        onPress={() => navigation.navigate('Profile')}
+        onPress={() => navigation.navigate('Profile', { openEditDemographics: true })}
       />
 
       {/* Action 2: Upload Health Records */}

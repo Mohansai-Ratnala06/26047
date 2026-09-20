@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import Patient from '../models/Patient';
+import User from '../models/User';
 import { generateCode } from '../utils/codeGenerator';
 import { ApiResponse } from '../types';
 import { resolveOrCreatePatient } from '../middleware/patientResolver';
@@ -101,6 +102,10 @@ export const updateMe = async (req: Request, res: Response) => {
       { $set: updateData },
       { new: true, runValidators: true }
     );
+
+    if (identifiers?.abhaId) {
+      await User.findByIdAndUpdate(userId, { abhaId: identifiers.abhaId }).catch(() => {});
+    }
 
     if (!patient) {
       const response: ApiResponse = { success: false, message: 'Patient profile not found' };

@@ -21,6 +21,7 @@ import {
   SectionHeader,
   Badge,
   IdentityChip,
+  Input,
 } from '../../components';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
@@ -28,17 +29,27 @@ import { useTranslation, SupportedLanguage } from '../../i18n';
 import { patientApi } from '../../api/patientApi';
 import { healthProfileApi } from '../../api/healthProfileApi';
 
-type ModalType = 'health' | 'consent' | 'identifiers' | 'language' | 'security' | 'accessibility' | null;
+type ModalType = 'health' | 'consent' | 'identifiers' | 'language' | 'security' | 'accessibility' | 'edit_demographics' | null;
 
-export const ProfileScreen: React.FC = () => {
+export const ProfileScreen: React.FC<{ navigation?: any; route?: any }> = ({ navigation, route }) => {
   const { user, logout } = useAuthStore();
   const { t, currentLanguage, setLanguage } = useTranslation();
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
 
   // Dynamic Patient & Health Profile states
   const [patientData, setPatientData] = useState<any>(null);
   const [healthData, setHealthData] = useState<any>(null);
+
+  // Demographics Editing form states
+  const [editFirstName, setEditFirstName] = useState<string>('');
+  const [editLastName, setEditLastName] = useState<string>('');
+  const [editGender, setEditGender] = useState<string>('');
+  const [editBloodGroup, setEditBloodGroup] = useState<string>('');
+  const [editAge, setEditAge] = useState<string>('');
+  const [editAbhaId, setEditAbhaId] = useState<string>('');
+  const [editPhone, setEditPhone] = useState<string>('');
 
   // Settings & Toggles
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
@@ -77,6 +88,75 @@ export const ProfileScreen: React.FC = () => {
     loadPatientData();
   }, []);
 
+  // Open edit modal if navigated with openEditDemographics parameter
+  useEffect(() => {
+    if (route?.params?.openEditDemographics) {
+      setActiveModal('edit_demographics');
+    }
+  }, [route?.params?.openEditDemographics]);
+
+  // Pre-fill edit modal with real-time database demographics
+  useEffect(() => {
+    if (activeModal === 'edit_demographics') {
+      const pDemo = patientData?.demographics;
+      const pName = user?.name || '';
+      const nameParts = pName.trim().split(/\s+/);
+      setEditFirstName(pDemo?.firstName || nameParts[0] || '');
+      setEditLastName(pDemo?.lastName || nameParts.slice(1).join(' ') || '');
+      setEditGender(pDemo?.gender ? pDemo.gender.toLowerCase() : '');
+      setEditBloodGroup(pDemo?.bloodGroup || '');
+      setEditAge(pDemo?.age !== undefined && pDemo?.age !== null ? String(pDemo.age) : '');
+      setEditAbhaId(patientData?.identifiers?.abhaId || user?.abhaId || '');
+      setEditPhone(patientData?.contact?.phone || user?.phone || '');
+    }
+  }, [activeModal, patientData, user]);
+
+  const handleSaveDemographics = async () => {
+    setSaving(true);
+    try {
+      const ageNum = parseInt(editAge.trim(), 10);
+      const updatePayload: any = {
+        demographics: {
+          firstName: editFirstName.trim() || undefined,
+          lastName: editLastName.trim() || undefined,
+          gender: editGender ? editGender.toLowerCase() : undefined,
+          bloodGroup: editBloodGroup || undefined,
+          age: !isNaN(ageNum) && ageNum > 0 ? ageNum : undefined,
+        },
+        identifiers: {
+          abhaId: editAbhaId.trim() || undefined,
+        },
+        contact: {
+          phone: editPhone.trim() || undefined,
+        },
+      };
+
+      const res = await patientApi.updateMe(updatePayload);
+      if (res?.success && res.data) {
+        setPatientData(res.data);
+        if (user) {
+          const updatedName = `${editFirstName.trim()} ${editLastName.trim()}`.trim();
+          useAuthStore.setState({
+            user: {
+              ...user,
+              name: updatedName || user.name,
+              abhaId: editAbhaId.trim() || user.abhaId,
+              phone: editPhone.trim() || user.phone,
+            },
+          });
+        }
+        Alert.alert(t('common.done') || 'Saved', 'Demographics updated successfully in real time.');
+        setActiveModal(null);
+      } else {
+        Alert.alert('Update Failed', res?.message || 'Unable to update profile.');
+      }
+    } catch (err: any) {
+      Alert.alert('Update Error', err?.message || 'Error updating demographics.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleLanguageChange = async (langCode: string) => {
     await setLanguage(langCode as SupportedLanguage);
   };
@@ -84,11 +164,26 @@ export const ProfileScreen: React.FC = () => {
   const abhaIdValue =
     patientData?.identifiers?.abhaId ||
     user?.abhaId ||
-    '91-9272-6483-8928';
+    '';
 
   const patientCodeValue =
     patientData?.patientCode ||
-    'PAT-000007';
+    '';
+
+  const dynamicProfileName =
+    patientData?.demographics?.firstName
+      ? `${patientData.demographics.firstName} ${patientData.demographics.lastName || ''}`.trim()
+      : user?.name || 'Citizen';
+
+  const dynamicProfilePhone =
+    patientData?.contact?.phone ||
+    user?.phone ||
+    'Not Registered';
+
+  const dynamicProfileEmail =
+    patientData?.contact?.email ||
+    user?.email ||
+    'No email registered';
 
   return (
     <ScreenContainer scrollable hasBottomTabs>
@@ -106,15 +201,24 @@ export const ProfileScreen: React.FC = () => {
         }
       />
 
-      {/* Dynamic Profile Card with Patient Code & ABHA */}
+      {/* Dynamic Profile Card with Real-time Patient Code & ABHA */}
       <ProfileCard
-        name={user?.name || patientData?.demographics?.firstName || 'Patient'}
-        email={user?.email || patientData?.contact?.email || 'No email registered'}
-        phone={user?.phone || patientData?.contact?.phone || '+91 99618 56752'}
-        abhaId={abhaIdValue}
+        name={dynamicProfileName}
+        email={dynamicProfileEmail}
+        phone={dynamicProfilePhone}
+        abhaId={abhaIdValue || undefined}
       >
         <View style={styles.cardBadgeRow}>
-          <IdentityChip label={t('profile.patientIdLabel')} value={patientCodeValue} />
+          <IdentityChip label={t('profile.patientIdLabel')} value={patientCodeValue || 'PAT-PENDING'} />
+          <TouchableOpacity
+            style={styles.editProfileChipBtn}
+            onPress={() => setActiveModal('edit_demographics')}
+            activeOpacity={0.7}
+            accessibilityLabel="Edit Profile Demographics"
+          >
+            <Ionicons name="create-outline" size={13} color={colors.primaryDark} />
+            <Text style={styles.editProfileChipText}>Edit Profile</Text>
+          </TouchableOpacity>
           <Badge label={t('profile.activePatientBadge')} variant="mint" style={styles.statusBadge} />
         </View>
       </ProfileCard>
@@ -274,21 +378,37 @@ export const ProfileScreen: React.FC = () => {
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Demographics Card */}
               <Card style={styles.detailCard}>
-                <Text style={styles.cardHeaderTitle}>Patient Demographics</Text>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.cardHeaderTitle}>Patient Demographics</Text>
+                  <TouchableOpacity
+                    onPress={() => setActiveModal('edit_demographics')}
+                    style={styles.modalEditSmallBtn}
+                    accessibilityLabel="Edit Demographics"
+                  >
+                    <Ionicons name="create-outline" size={14} color={colors.primary} />
+                    <Text style={styles.modalEditSmallText}>Edit</Text>
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.infoGrid}>
                   <View style={styles.infoCol}>
                     <Text style={styles.infoLabel}>Blood Group</Text>
-                    <Text style={styles.infoValue}>{patientData?.demographics?.bloodGroup || 'O+'}</Text>
+                    <Text style={styles.infoValue}>{patientData?.demographics?.bloodGroup || 'Not Set'}</Text>
                   </View>
                   <View style={styles.infoCol}>
                     <Text style={styles.infoLabel}>Gender</Text>
                     <Text style={styles.infoValue}>
-                      {patientData?.demographics?.gender ? patientData.demographics.gender.toUpperCase() : 'MALE'}
+                      {patientData?.demographics?.gender
+                        ? patientData.demographics.gender.toUpperCase()
+                        : 'NOT SPECIFIED'}
                     </Text>
                   </View>
                   <View style={styles.infoCol}>
                     <Text style={styles.infoLabel}>Age</Text>
-                    <Text style={styles.infoValue}>{patientData?.demographics?.age || 26} yrs</Text>
+                    <Text style={styles.infoValue}>
+                      {patientData?.demographics?.age !== undefined && patientData?.demographics?.age !== null
+                        ? `${patientData.demographics.age} yrs`
+                        : 'Not Set'}
+                    </Text>
                   </View>
                 </View>
               </Card>
@@ -467,17 +587,32 @@ export const ProfileScreen: React.FC = () => {
               <Card style={styles.detailCard}>
                 <View style={styles.rowBetween}>
                   <Text style={styles.cardHeaderTitle}>Ayushman Bharat Health Account</Text>
-                  <Badge label="ABDM Active" variant="mint" />
+                  <Badge
+                    label={abhaIdValue ? "ABDM Active" : "Pending Linking"}
+                    variant={abhaIdValue ? "mint" : "neutral"}
+                  />
                 </View>
-                <Text style={styles.identifierNumber}>{abhaIdValue}</Text>
+                <Text style={[styles.identifierNumber, !abhaIdValue && { color: colors.textMuted }]}>
+                  {abhaIdValue || 'Pending Linking'}
+                </Text>
                 <Text style={styles.metaSub}>National Digital Health ID linked to Aadhaar & Phone</Text>
-                <Button
-                  title="Copy ABHA ID"
-                  variant="secondary"
-                  size="sm"
-                  onPress={() => Alert.alert('Copied', `${abhaIdValue} copied to clipboard!`)}
-                  style={{ marginTop: spacing.sm }}
-                />
+                {abhaIdValue ? (
+                  <Button
+                    title="Copy ABHA ID"
+                    variant="secondary"
+                    size="sm"
+                    onPress={() => Alert.alert('Copied', `${abhaIdValue} copied to clipboard!`)}
+                    style={{ marginTop: spacing.sm }}
+                  />
+                ) : (
+                  <Button
+                    title="Link / Enter ABHA ID"
+                    variant="primary"
+                    size="sm"
+                    onPress={() => setActiveModal('edit_demographics')}
+                    style={{ marginTop: spacing.sm }}
+                  />
+                )}
               </Card>
 
               {/* Hospital Clinical UID */}
@@ -486,21 +621,35 @@ export const ProfileScreen: React.FC = () => {
                   <Text style={styles.cardHeaderTitle}>Hospital Patient UID</Text>
                   <Badge label="Canonical" variant="neutral" />
                 </View>
-                <Text style={styles.identifierNumber}>{patientCodeValue}</Text>
+                <Text style={styles.identifierNumber}>{patientCodeValue || 'PAT-PENDING'}</Text>
                 <Text style={styles.metaSub}>Universal EMR identifier across all hospital visits</Text>
               </Card>
 
               {/* Registered Phone */}
               <Card style={styles.detailCard}>
-                <Text style={styles.cardHeaderTitle}>Verified Contact Details</Text>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.cardHeaderTitle}>Verified Contact Details</Text>
+                  <TouchableOpacity
+                    onPress={() => setActiveModal('edit_demographics')}
+                    style={styles.modalEditSmallBtn}
+                    accessibilityLabel="Edit Contact"
+                  >
+                    <Ionicons name="create-outline" size={14} color={colors.primary} />
+                    <Text style={styles.modalEditSmallText}>Edit</Text>
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.contactItem}>
                   <Ionicons name="call-outline" size={18} color={colors.primary} />
-                  <Text style={styles.contactText}>{user?.phone || '+91 99618 56752'}</Text>
-                  <Badge label="OTP Verified" variant="mint" style={{ marginLeft: 'auto' }} />
+                  <Text style={styles.contactText}>
+                    {patientData?.contact?.phone || user?.phone || 'Not Registered'}
+                  </Text>
+                  <Badge label="Verified" variant="mint" style={{ marginLeft: 'auto' }} />
                 </View>
                 <View style={styles.contactItem}>
                   <Ionicons name="mail-outline" size={18} color={colors.primary} />
-                  <Text style={styles.contactText}>{user?.email || 'john@example.com'}</Text>
+                  <Text style={styles.contactText}>
+                    {patientData?.contact?.email || user?.email || 'No email registered'}
+                  </Text>
                   <Badge label="Primary" variant="neutral" style={{ marginLeft: 'auto' }} />
                 </View>
               </Card>
@@ -718,6 +867,139 @@ export const ProfileScreen: React.FC = () => {
                   <Badge label="WCAG 2.1 AA" variant="mint" />
                 </View>
               </Card>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================== */}
+      {/* 7. EDIT DEMOGRAPHICS MODAL (Real-time DB Sync) */}
+      {/* ========================================================== */}
+      <Modal
+        visible={activeModal === 'edit_demographics'}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setActiveModal(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Edit Demographics</Text>
+                <Text style={styles.modalSubtitle}>Update your personal health identity</Text>
+              </View>
+              <TouchableOpacity onPress={() => setActiveModal(null)} style={styles.closeIconBtn}>
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing.lg }}>
+              {/* Name Fields */}
+              <View style={styles.nameRow}>
+                <View style={{ flex: 1, marginRight: spacing.xs }}>
+                  <Input
+                    label="First Name"
+                    value={editFirstName}
+                    onChangeText={setEditFirstName}
+                    placeholder="e.g. Aarav"
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: spacing.xs }}>
+                  <Input
+                    label="Last Name"
+                    value={editLastName}
+                    onChangeText={setEditLastName}
+                    placeholder="e.g. Sharma"
+                  />
+                </View>
+              </View>
+
+              {/* Gender Selector */}
+              <View style={styles.editSection}>
+                <Text style={styles.editSectionLabel}>Gender</Text>
+                <View style={styles.chipOptionRow}>
+                  {['Male', 'Female', 'Other'].map((g) => {
+                    const isSelected = editGender === g.toLowerCase();
+                    return (
+                      <TouchableOpacity
+                        key={g}
+                        style={[styles.selectorChip, isSelected && styles.selectorChipActive]}
+                        onPress={() => setEditGender(g.toLowerCase())}
+                      >
+                        <Text style={[styles.selectorChipText, isSelected && styles.selectorChipTextActive]}>
+                          {g}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Blood Group Selector */}
+              <View style={styles.editSection}>
+                <Text style={styles.editSectionLabel}>Blood Group</Text>
+                <View style={styles.chipOptionGrid}>
+                  {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((bg) => {
+                    const isSelected = editBloodGroup === bg;
+                    return (
+                      <TouchableOpacity
+                        key={bg}
+                        style={[styles.bloodGroupChip, isSelected && styles.bloodGroupChipActive]}
+                        onPress={() => setEditBloodGroup(bg)}
+                      >
+                        <Text style={[styles.bloodGroupChipText, isSelected && styles.bloodGroupChipTextActive]}>
+                          {bg}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Age & Phone */}
+              <Input
+                label="Age (Years)"
+                value={editAge}
+                onChangeText={setEditAge}
+                placeholder="e.g. 26"
+                keyboardType="numeric"
+                leadingIcon={<Ionicons name="calendar-outline" size={18} color={colors.textMuted} />}
+              />
+
+              <Input
+                label="ABHA ID (Ayushman Bharat Digital Health Account)"
+                value={editAbhaId}
+                onChangeText={setEditAbhaId}
+                placeholder="e.g. 91-1234-5678-9012"
+                helperText="Official 14-digit ABDM citizen identification"
+                leadingIcon={<Ionicons name="card-outline" size={18} color={colors.textMuted} />}
+              />
+
+              <Input
+                label="Registered Phone Number"
+                value={editPhone}
+                onChangeText={setEditPhone}
+                placeholder="+91 98765 43210"
+                keyboardType="phone-pad"
+                leadingIcon={<Ionicons name="call-outline" size={18} color={colors.textMuted} />}
+              />
+
+              {/* Action Buttons */}
+              <View style={styles.editActionRow}>
+                <Button
+                  title={t('common.cancel') || 'Cancel'}
+                  variant="outline"
+                  onPress={() => setActiveModal(null)}
+                  style={{ flex: 1, marginRight: spacing.xs }}
+                />
+                <Button
+                  title={saving ? (t('common.loading') || 'Saving...') : (t('common.save') || 'Save Changes')}
+                  variant="primary"
+                  loading={saving}
+                  onPress={handleSaveDemographics}
+                  style={{ flex: 1, marginLeft: spacing.xs }}
+                />
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -1019,5 +1301,107 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs - 1,
     color: colors.textMuted,
     marginTop: 2,
+  },
+  editProfileChipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(13, 148, 136, 0.25)',
+  },
+  editProfileChipText: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.primaryDark,
+  },
+  modalEditSmallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: '#F0FAF8',
+  },
+  modalEditSmallText: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.primary,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  editSection: {
+    marginBottom: spacing.md,
+  },
+  editSectionLabel: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  chipOptionRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  selectorChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectorChipActive: {
+    backgroundColor: colors.primaryDark,
+    borderColor: colors.primaryDark,
+  },
+  selectorChipText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.textPrimary,
+  },
+  selectorChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: typography.fontWeight.bold,
+  },
+  chipOptionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  bloodGroupChip: {
+    width: '22%',
+    paddingVertical: 8,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bloodGroupChipActive: {
+    backgroundColor: '#DC2626',
+    borderColor: '#DC2626',
+  },
+  bloodGroupChipText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  bloodGroupChipTextActive: {
+    color: '#FFFFFF',
+  },
+  editActionRow: {
+    flexDirection: 'row',
+    marginTop: spacing.md,
   },
 });

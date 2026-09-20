@@ -28,37 +28,56 @@ export interface DigitalHealthCardProps {
   phone?: string;
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
+  onEditDemographics?: () => void;
 }
 
 export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
   name,
-  abhaId = '91-2526-7373-9171',
-  patientCode = 'PAT-000007',
-  bloodGroup = 'O+',
-  gender = 'Female',
-  age = 26,
-  phone = '+91 99618 56752',
+  abhaId,
+  patientCode,
+  bloodGroup,
+  gender,
+  age,
+  phone,
   style,
   onPress,
+  onEditDemographics,
 }) => {
   const { t } = useTranslation();
   const [modalVisible, setModalVisible] = useState<boolean>(false);
 
-  // Strictly Identity & Demographics QR Payload (Zero clinical/medical data)
+  const isPendingAbha = !abhaId || abhaId.toLowerCase().includes('pending') || abhaId.toLowerCase().includes('link');
+  const displayAbha = isPendingAbha ? (t('home.pendingAbhaId') || 'Pending Linking') : abhaId;
+  const displayPatientCode = patientCode || 'PAT-PENDING';
+  const displayBloodGroup = bloodGroup && bloodGroup !== 'Not Set' ? bloodGroup : (t('common.pending') || 'Not Set');
+  const displayGender = gender && gender !== 'Not Specified' ? gender : 'Not Specified';
+  const displayAge = age && age !== 'Not Set'
+    ? (typeof age === 'number' || !String(age).includes('Yrs') ? `${age} Yrs` : String(age))
+    : (t('common.pending') || 'Not Set');
+  const displayPhone = phone || 'Not Registered';
+
+  // Strictly Identity & Demographics QR Payload (Real-time from database, Zero clinical/medical data)
   const qrPayload = useMemo(() => {
+    const cleanAge = age && age !== 'Not Set' ? (typeof age === 'number' ? age : parseInt(String(age), 10) || null) : null;
+    const cleanGender = gender && gender !== 'Not Specified' && gender !== 'Not Set' ? gender : null;
+    const cleanBlood = bloodGroup && bloodGroup !== 'Not Set' ? bloodGroup : null;
+    const cleanAbha = isPendingAbha ? null : abhaId;
+    const cleanPatientCode = patientCode && patientCode !== 'PAT-PENDING' ? patientCode : null;
+    const cleanPhone = phone && phone !== 'Not Registered' ? phone : null;
+
     return JSON.stringify({
       v: '1.0',
       type: 'ABDM_CITIZEN_ID',
-      abha: abhaId,
-      name: name,
-      gender: gender,
-      age: typeof age === 'number' ? age : parseInt(String(age), 10) || 26,
-      bloodGroup: bloodGroup,
-      patientCode: patientCode,
-      phone: phone,
+      abha: cleanAbha,
+      name: name || 'Citizen',
+      gender: cleanGender,
+      age: cleanAge,
+      bloodGroup: cleanBlood,
+      patientCode: cleanPatientCode,
+      phone: cleanPhone,
       issuer: 'Vaidyaarc ABDM Gateway',
     });
-  }, [abhaId, name, gender, age, bloodGroup, patientCode, phone]);
+  }, [abhaId, isPendingAbha, name, gender, age, bloodGroup, patientCode, phone]);
 
   const handleCardPress = () => {
     setModalVisible(true);
@@ -66,6 +85,10 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
   };
 
   const handleCopyAbha = () => {
+    if (isPendingAbha) {
+      Alert.alert(t('home.pendingAbhaId') || 'ABHA Not Linked', 'Please link your ABHA ID in profile settings.');
+      return;
+    }
     Alert.alert(
       t('common.done') || 'Copied',
       `${abhaId} ${(t('home.copyAbhaSuccess') as string) || 'copied to clipboard!'}`
@@ -103,12 +126,28 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
               </Text>
             </View>
           </View>
-          <Badge
-            label={t('home.abdmActive') || 'ABDM Active'}
-            variant="mint"
-            size="sm"
-            style={styles.headerBadge}
-          />
+          <View style={styles.headerRightRow}>
+            {onEditDemographics ? (
+              <TouchableOpacity
+                style={styles.cardEditPill}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  onEditDemographics();
+                }}
+                activeOpacity={0.7}
+                accessibilityLabel="Edit Profile Demographics"
+              >
+                <Ionicons name="create-outline" size={12} color={colors.primaryDark} />
+                <Text style={styles.cardEditPillText}>Edit</Text>
+              </TouchableOpacity>
+            ) : null}
+            <Badge
+              label={t('home.abdmActive') || 'ABDM Active'}
+              variant="mint"
+              size="sm"
+              style={styles.headerBadge}
+            />
+          </View>
         </View>
 
         {/* Card Body: Patient Identification & Dynamic QR */}
@@ -119,38 +158,50 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
               {t('home.healthCardHolder') || 'HEALTH ID HOLDER'}
             </Text>
             <Text style={styles.cardHolderName} numberOfLines={1}>
-              {name}
+              {name || 'Citizen'}
             </Text>
 
             {/* Formatted ABHA ID Pill */}
-            <View style={styles.abhaPill}>
-              <Ionicons name="card-outline" size={13} color={colors.primaryDark} />
-              <Text style={styles.abhaPillText}>{abhaId}</Text>
+            <View style={[styles.abhaPill, isPendingAbha && styles.abhaPillPending]}>
+              <Ionicons
+                name={isPendingAbha ? "link-outline" : "card-outline"}
+                size={13}
+                color={isPendingAbha ? colors.textMuted : colors.primaryDark}
+              />
+              <Text style={[styles.abhaPillText, isPendingAbha && styles.abhaPillTextPending]}>
+                {displayAbha}
+              </Text>
             </View>
 
             {/* Demographics Pill Row (Blood Group, Gender, Age, UID) */}
             <View style={styles.demographicsRow}>
               {/* Blood Group Pill (Vital for Emergency) */}
-              <View style={styles.bloodPill}>
-                <Ionicons name="water" size={11} color="#DC2626" />
-                <Text style={styles.bloodPillText}>{bloodGroup}</Text>
+              <View style={bloodGroup && bloodGroup !== 'Not Set' ? styles.bloodPill : styles.demographicPill}>
+                <Ionicons
+                  name={bloodGroup && bloodGroup !== 'Not Set' ? "water" : "water-outline"}
+                  size={11}
+                  color={bloodGroup && bloodGroup !== 'Not Set' ? "#DC2626" : colors.textSecondary}
+                />
+                <Text style={bloodGroup && bloodGroup !== 'Not Set' ? styles.bloodPillText : styles.demographicPillText}>
+                  {displayBloodGroup}
+                </Text>
               </View>
 
               {/* Gender Pill */}
               <View style={styles.demographicPill}>
                 <Ionicons name="person-outline" size={10} color={colors.textSecondary} />
-                <Text style={styles.demographicPillText}>{gender}</Text>
+                <Text style={styles.demographicPillText}>{displayGender}</Text>
               </View>
 
               {/* Age Pill */}
               <View style={styles.demographicPill}>
                 <Ionicons name="calendar-outline" size={10} color={colors.textSecondary} />
-                <Text style={styles.demographicPillText}>{age} Yrs</Text>
+                <Text style={styles.demographicPillText}>{displayAge}</Text>
               </View>
 
               {/* Patient UID Pill */}
               <View style={styles.uidPill}>
-                <Text style={styles.uidPillText}>{patientCode}</Text>
+                <Text style={styles.uidPillText}>{displayPatientCode}</Text>
               </View>
             </View>
           </View>
@@ -234,8 +285,10 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
                 <Text style={styles.modalHolderLabel}>
                   {t('home.healthCardHolder') || 'REGISTERED CITIZEN'}
                 </Text>
-                <Text style={styles.modalHolderName}>{name}</Text>
-                <Text style={styles.modalAbhaText}>{abhaId}</Text>
+                <Text style={styles.modalHolderName}>{name || 'Citizen'}</Text>
+                <Text style={[styles.modalAbhaText, isPendingAbha && { color: colors.textMuted }]}>
+                  {displayAbha}
+                </Text>
               </View>
 
               {/* High-Resolution Dynamic Scannable QR Code */}
@@ -263,8 +316,14 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
                       {(t('home.bloodGroupLabel') as string) || 'Blood Group'}
                     </Text>
                     <View style={styles.specValueBadge}>
-                      <Ionicons name="water" size={13} color="#DC2626" />
-                      <Text style={styles.specBloodValue}>{bloodGroup}</Text>
+                      <Ionicons
+                        name="water"
+                        size={13}
+                        color={bloodGroup && bloodGroup !== 'Not Set' ? "#DC2626" : colors.textMuted}
+                      />
+                      <Text style={[styles.specBloodValue, (!bloodGroup || bloodGroup === 'Not Set') && { color: colors.textSecondary }]}>
+                        {displayBloodGroup}
+                      </Text>
                     </View>
                   </View>
 
@@ -272,14 +331,14 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
                     <Text style={styles.specLabel}>
                       {(t('home.genderLabel') as string) || 'Gender'}
                     </Text>
-                    <Text style={styles.specValue}>{gender}</Text>
+                    <Text style={styles.specValue}>{displayGender}</Text>
                   </View>
 
                   <View style={styles.specItem}>
                     <Text style={styles.specLabel}>
                       {(t('home.ageLabel') as string) || 'Age'}
                     </Text>
-                    <Text style={styles.specValue}>{age} Yrs</Text>
+                    <Text style={styles.specValue}>{displayAge}</Text>
                   </View>
                 </View>
 
@@ -290,12 +349,12 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
                     <Text style={styles.specLabel}>
                       {(t('home.patientIdLabel') as string) || 'Hospital UID'}
                     </Text>
-                    <Text style={styles.specValueMono}>{patientCode}</Text>
+                    <Text style={styles.specValueMono}>{displayPatientCode}</Text>
                   </View>
 
                   <View style={[styles.specItem, { flex: 1.5 }]}>
                     <Text style={styles.specLabel}>Registered Phone</Text>
-                    <Text style={styles.specValueMono}>{phone}</Text>
+                    <Text style={styles.specValueMono}>{displayPhone}</Text>
                   </View>
                 </View>
               </View>
@@ -314,13 +373,27 @@ export const DigitalHealthCard: React.FC<DigitalHealthCardProps> = ({
 
               {/* Action Buttons */}
               <View style={styles.modalActionCol}>
-                <Button
-                  title="Copy ABHA Number"
-                  variant="secondary"
-                  icon={<Ionicons name="copy-outline" size={16} color={colors.primary} />}
-                  onPress={handleCopyAbha}
-                  style={styles.copyBtn}
-                />
+                {onEditDemographics ? (
+                  <Button
+                    title="Update Demographics"
+                    variant="outline"
+                    icon={<Ionicons name="create-outline" size={16} color={colors.primary} />}
+                    onPress={() => {
+                      setModalVisible(false);
+                      onEditDemographics();
+                    }}
+                    style={styles.editBtn}
+                  />
+                ) : null}
+                {!isPendingAbha ? (
+                  <Button
+                    title="Copy ABHA Number"
+                    variant="secondary"
+                    icon={<Ionicons name="copy-outline" size={16} color={colors.primary} />}
+                    onPress={handleCopyAbha}
+                    style={styles.copyBtn}
+                  />
+                ) : null}
                 <Button
                   title={t('common.close') || 'Done'}
                   variant="primary"
@@ -409,6 +482,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
+  headerRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  cardEditPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(13, 148, 136, 0.3)',
+  },
+  cardEditPillText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.primaryDark,
+  },
 
   /* Card Body */
   cardBodyRow: {
@@ -452,11 +546,18 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(10, 77, 82, 0.15)',
     marginBottom: 6,
   },
+  abhaPillPending: {
+    backgroundColor: '#F3F4F6',
+    borderColor: colors.borderSubtle,
+  },
   abhaPillText: {
     fontSize: 12,
     fontWeight: typography.fontWeight.semiBold,
     color: colors.primaryDark,
     letterSpacing: 0.5,
+  },
+  abhaPillTextPending: {
+    color: colors.textMuted,
   },
 
   /* Demographics Badges Row */
@@ -749,6 +850,10 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: spacing.xs,
     marginTop: spacing.sm,
+  },
+  editBtn: {
+    width: '100%',
+    marginBottom: 4,
   },
   copyBtn: {
     width: '100%',
