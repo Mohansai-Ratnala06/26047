@@ -162,6 +162,7 @@ export const VoiceAgentScreen: React.FC = () => {
   const [activeEpisodeId, setActiveEpisodeId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [brainResponse, setBrainResponse] = useState<TurnResponseData | null>(null);
+  const forceNewConsultationRef = useRef<boolean>(false);
 
   // Episode History Modal state
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -477,10 +478,11 @@ export const VoiceAgentScreen: React.FC = () => {
   // -------------------------------------------------------------
   // SESSION REHYDRATION & INITIALIZATION
   // -------------------------------------------------------------
-  const handleStartNewConsultation = () => {
+  const handleStartNewConsultation = async () => {
     if (audioStatus.playing) {
       audioPlayer.pause();
     }
+    const prevEpId = activeEpisodeId;
     setActiveAudioMsgId(null);
     setLoadingAudioMsgId(null);
     setActiveEpisodeId(null);
@@ -491,22 +493,43 @@ export const VoiceAgentScreen: React.FC = () => {
     setLastAudioBase64(null);
     setErrorMessage(null);
     setSttStatus('New consultation ready. How can I care for you today?');
+    forceNewConsultationRef.current = true;
+
+    // Archive previous episode to 'under_review' so it is never resurrected for new intakes
+    if (prevEpId) {
+      try {
+        await episodeApi.updateEpisode(prevEpId, { status: 'under_review' });
+      } catch (err: any) {
+        console.warn('[VoiceAgent] Failed to archive previous episode:', err.message);
+      }
+    }
   };
 
   const getOrCreateActiveEpisode = async (initialChiefComplaint?: string): Promise<string> => {
-    if (activeEpisodeId) return activeEpisodeId;
-    try {
-      const res = await episodeApi.getEpisodes();
-      const episodeList = res?.success && Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
-      const openEpisode = episodeList.find((ep: any) => ep.status === 'open');
-      if (openEpisode && openEpisode._id) {
-        setActiveEpisodeId(openEpisode._id);
-        return openEpisode._id;
+    if (activeEpisodeId && !forceNewConsultationRef.current) return activeEpisodeId;
+
+    // Only search for existing episode if NOT explicitly starting a fresh consultation
+    if (!forceNewConsultationRef.current) {
+      try {
+        const res = await episodeApi.getEpisodes();
+        const episodeList = res?.success && Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
+        const openEpisode = episodeList.find(
+          (ep: any) =>
+            ep.status === 'open' &&
+            !ep.clinicalOutput?.pre_consultation_report &&
+            !ep.clinicalNotes?.includes('[PRE-CONSULTATION SUMMARY')
+        );
+        if (openEpisode && openEpisode._id) {
+          setActiveEpisodeId(openEpisode._id);
+          return openEpisode._id;
+        }
+      } catch (err) {
+        console.warn('Could not fetch existing episodes:', err);
       }
-    } catch (err) {
-      console.warn('Could not fetch existing episodes:', err);
     }
-    // Lazy creation: only instantiate in DB when patient actually sends a symptom/turn, with explicit consent
+
+    // Explicit new consultation requested OR no genuine in-progress open episode exists:
+    forceNewConsultationRef.current = false;
     const createRes = await episodeApi.createEpisode({
       chiefComplaint: initialChiefComplaint || 'Clinical Consultation & Symptom Intake',
       type: 'symptom',
@@ -530,7 +553,26 @@ export const VoiceAgentScreen: React.FC = () => {
       try {
         const res = await episodeApi.getEpisodes();
         const episodeList = res?.success && Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
-        const openEpisode = episodeList.find((ep: any) => ep.status === 'open');
+
+        // Auto-heal any stale completed episodes that were left as 'open'
+        const staleCompletedEps = episodeList.filter(
+          (ep: any) =>
+            ep.status === 'open' &&
+            (ep.clinicalOutput?.pre_consultation_report || ep.clinicalNotes?.includes('[PRE-CONSULTATION SUMMARY'))
+        );
+        for (const ep of staleCompletedEps) {
+          if (ep._id) {
+            episodeApi.updateEpisode(ep._id, { status: 'under_review' }).catch(() => {});
+          }
+        }
+
+        // Only automatically rehydrate an episode that is GENUINELY IN-PROGRESS (not yet finalized)
+        const openEpisode = episodeList.find(
+          (ep: any) =>
+            ep.status === 'open' &&
+            !ep.clinicalOutput?.pre_consultation_report &&
+            !ep.clinicalNotes?.includes('[PRE-CONSULTATION SUMMARY')
+        );
         if (openEpisode && openEpisode._id) {
           if (isMounted) {
             setActiveEpisodeId(openEpisode._id);

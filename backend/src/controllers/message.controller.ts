@@ -347,6 +347,9 @@ export const sendMessage = async (req: Request, res: Response) => {
             if (level === 'urgent' || level === 'high') {
               ep.status = 'escalated';
               ep.type = level === 'urgent' ? 'emergency' : 'consultation';
+            } else if (preConsult) {
+              ep.status = 'under_review';
+              ep.type = 'consultation';
             } else if (turnResponse.clinical_output?.consultation_recommended) {
               ep.type = 'consultation';
             }
@@ -383,6 +386,10 @@ SOAP Objective: ${preConsult.doctorSummarySOAP.objective}
 SOAP Assessment: ${preConsult.doctorSummarySOAP.assessment}
 SOAP Plan: ${preConsult.doctorSummarySOAP.plan}
 Remedies Attempted: ${preConsult.remediesTried?.join(', ') || 'None'}`;
+            if (ep.status === 'open') {
+              ep.status = 'under_review';
+              ep.type = 'consultation';
+            }
             hasChanges = true;
           }
 

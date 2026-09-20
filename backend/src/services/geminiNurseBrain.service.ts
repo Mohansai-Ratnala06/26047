@@ -404,11 +404,17 @@ If the presentation is clearly benign/acute/mild (e.g. 2-day cold, minor headach
 • No need to escalate to formal report unless risk patterns emerge
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-UNRELATED NEW PROBLEM DETECTION
+COMPLAINT ISOLATION & UNRELATED NEW PROBLEM DETECTION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Active episode complaint: "${stateSnapshot.chiefComplaint || 'Not yet established'}"
-- If patient reports a COMPLETELY UNRELATED medical problem: set unrelated_problem_detected = true, detected_new_complaint = concise clinical title, and politely ask in patient's language if they want to start a new episode.
-- If patient is continuing same issue / reporting follow-up: set unrelated_problem_detected = false.
+Pre-consultation report status: ${stateSnapshot.clinicalReportGenerated ? 'ALREADY FINALIZED FOR CURRENT COMPLAINT' : 'NOT YET GENERATED'}
+• If the patient introduces a NEW anatomical area or clinically UNRELATED problem (e.g., patient previously consulted for respiratory cough/fever, and now reports leg pain, joint pain, skin rash, stomach burn, etc.):
+  - You MUST recognize this as an unrelated new problem.
+  - Set unrelated_problem_detected = true.
+  - Set detected_new_complaint = concise clinical title in English (e.g. 'Bilateral Lower Extremity Pain' or 'Leg Discomfort').
+  - Do NOT assume the new symptom is part of the previous complaint or use words like 'also' / 'కూడా' unless directly clinically correlated.
+  - In your nurse dialogue, warmly acknowledge the new discomfort, and ask in the patient's language whether they would like to start a new consultation session specifically for this new issue.
+• If patient is continuing same issue / reporting follow-up on existing complaint: set unrelated_problem_detected = false.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ANTI-HALLUCINATION — CRITICAL INTEGRITY RULE
@@ -814,8 +820,8 @@ YOUR TASK:
       }
     );
 
-    // If eligible remedies found and not severe, record them into episode memory
-    if (ayurvedaEval.decision === 'eligible' && ayurvedaEval.recommendations.length > 0) {
+    // If eligible remedies found and not severe, record them into episode memory (only for current complaint)
+    if (!parsedLlm.unrelated_problem_detected && ayurvedaEval.decision === 'eligible' && ayurvedaEval.recommendations.length > 0) {
       for (const rec of ayurvedaEval.recommendations) {
         if (!stateSnapshot.remediesOffered.some((r) => r.recordId === rec.record_id)) {
           stateSnapshot.remediesOffered.push({
@@ -828,6 +834,22 @@ YOUR TASK:
           });
         }
       }
+    } else if (parsedLlm.unrelated_problem_detected) {
+      ayurvedaEval = {
+        decision: 'requires_clinician_review',
+        summary: 'Unrelated complaint detected. Awaiting patient confirmation to begin new consultation.',
+        recommendations: [],
+        blocked_reasons: ['Unrelated new complaint in progress'],
+        safety_findings_summary: {
+          red_flag_status: detectedRedFlags.length > 0 ? 'red_flags_detected' : 'no_obvious_red_flags',
+          risk_level: 'MODERATE',
+          severity_score: newSeverityScore,
+          immediate_attention_required: false,
+        },
+        provenance_sources: [],
+        disclaimer: 'Clinical consultation in progress for newly reported complaint.',
+        non_prescription_disclaimer: ayurvedaEval.non_prescription_disclaimer,
+      };
     }
 
     // 6. SYNTHESIZE DYNAMIC DASHAVIDHA ATURA PARIKSHA (Charaka Vimana 8/94)
@@ -964,14 +986,20 @@ YOUR TASK:
       !effectivePatientConsent &&
       !assistantAnnouncedReportReady;
 
+    const isNewUnrelatedActive = Boolean(
+      parsedLlm.unrelated_problem_detected || stateSnapshot.pendingEpisodeConfirmation
+    );
+
     const patientConsented =
-      effectivePatientConsent ||
-      assistantAnnouncedReportReady ||
-      (stateSnapshot.clinicalReportGenerated === true && stateSnapshot.turnCount > 1);
+      !isNewUnrelatedActive &&
+      (effectivePatientConsent ||
+        assistantAnnouncedReportReady ||
+        (stateSnapshot.clinicalReportGenerated === true && stateSnapshot.turnCount > 1));
 
     const shouldGenerateClinicalReport =
-      isLifeThreateningEmergency ||
-      (!isAskingPermission && patientConsented && (stateSnapshot.turnCount > 1 || parsedLlm.risk_convergence?.clinical_evidence_sufficient));
+      !isNewUnrelatedActive &&
+      (isLifeThreateningEmergency ||
+        (!isAskingPermission && patientConsented && (stateSnapshot.turnCount > 1 || parsedLlm.risk_convergence?.clinical_evidence_sufficient)));
 
     const soap = parsedLlm.pre_consultation_summary || {};
     if (shouldGenerateClinicalReport) {
