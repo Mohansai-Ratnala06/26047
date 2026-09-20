@@ -93,7 +93,14 @@ export const register = async (req: Request, res: Response) => {
         message: 'Registration successful',
         data: {
           token,
-          user: { id: savedUser._id, name: savedUser.name, phone: savedUser.phone, email: savedUser.email, abhaId: savedUser.abhaId },
+          user: {
+            id: savedUser._id,
+            name: savedUser.name,
+            phone: savedUser.phone,
+            email: savedUser.email,
+            abhaId: savedUser.abhaId,
+            onboardingCompleted: savedUser.onboardingCompleted,
+          },
           patient: { id: patient._id, patientCode },
         },
       };
@@ -151,7 +158,14 @@ export const login = async (req: Request, res: Response) => {
       message: 'Login successful',
       data: {
         token,
-        user: { id: user._id, name: user.name, phone: user.phone, email: user.email, abhaId: user.abhaId },
+        user: {
+          id: user._id,
+          name: user.name,
+          phone: user.phone,
+          email: user.email,
+          abhaId: user.abhaId,
+          onboardingCompleted: user.onboardingCompleted,
+        },
         patient: patient ? { id: patient._id, patientCode: patient.patientCode, status: patient.status } : null,
       },
     };

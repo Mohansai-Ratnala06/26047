@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   ScreenContainer,
@@ -47,6 +48,7 @@ export const ProfileScreen: React.FC<{ navigation?: any; route?: any }> = ({ nav
   const [editLastName, setEditLastName] = useState<string>('');
   const [editGender, setEditGender] = useState<string>('');
   const [editBloodGroup, setEditBloodGroup] = useState<string>('');
+  const [editDob, setEditDob] = useState<string>('');
   const [editAge, setEditAge] = useState<string>('');
   const [editAbhaId, setEditAbhaId] = useState<string>('');
   const [editPhone, setEditPhone] = useState<string>('');
@@ -84,9 +86,11 @@ export const ProfileScreen: React.FC<{ navigation?: any; route?: any }> = ({ nav
     }
   };
 
-  useEffect(() => {
-    loadPatientData();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadPatientData();
+    }, [])
+  );
 
   // Open edit modal if navigated with openEditDemographics parameter
   useEffect(() => {
@@ -105,6 +109,16 @@ export const ProfileScreen: React.FC<{ navigation?: any; route?: any }> = ({ nav
       setEditLastName(pDemo?.lastName || nameParts.slice(1).join(' ') || '');
       setEditGender(pDemo?.gender ? pDemo.gender.toLowerCase() : '');
       setEditBloodGroup(pDemo?.bloodGroup || '');
+      if (pDemo?.dateOfBirth) {
+        const d = new Date(pDemo.dateOfBirth);
+        if (!isNaN(d.getTime())) {
+          setEditDob(d.toISOString().split('T')[0]);
+        } else {
+          setEditDob('');
+        }
+      } else {
+        setEditDob('');
+      }
       setEditAge(pDemo?.age !== undefined && pDemo?.age !== null ? String(pDemo.age) : '');
       setEditAbhaId(patientData?.identifiers?.abhaId || user?.abhaId || '');
       setEditPhone(patientData?.contact?.phone || user?.phone || '');
@@ -114,14 +128,28 @@ export const ProfileScreen: React.FC<{ navigation?: any; route?: any }> = ({ nav
   const handleSaveDemographics = async () => {
     setSaving(true);
     try {
-      const ageNum = parseInt(editAge.trim(), 10);
+      let ageNum = parseInt(editAge.trim(), 10);
+      if (isNaN(ageNum) && editDob) {
+        const bDate = new Date(editDob);
+        if (!isNaN(bDate.getTime())) {
+          const today = new Date();
+          let a = today.getFullYear() - bDate.getFullYear();
+          const m = today.getMonth() - bDate.getMonth();
+          if (m < 0 || (m === 0 && today.getDate() < bDate.getDate())) {
+            a--;
+          }
+          if (a >= 0) ageNum = a;
+        }
+      }
+
       const updatePayload: any = {
         demographics: {
           firstName: editFirstName.trim() || undefined,
           lastName: editLastName.trim() || undefined,
           gender: editGender ? editGender.toLowerCase() : undefined,
           bloodGroup: editBloodGroup || undefined,
-          age: !isNaN(ageNum) && ageNum > 0 ? ageNum : undefined,
+          dateOfBirth: editDob ? new Date(editDob) : undefined,
+          age: !isNaN(ageNum) && ageNum >= 0 ? ageNum : undefined,
         },
         identifiers: {
           abhaId: editAbhaId.trim() || undefined,
@@ -407,6 +435,18 @@ export const ProfileScreen: React.FC<{ navigation?: any; route?: any }> = ({ nav
                     <Text style={styles.infoValue}>
                       {patientData?.demographics?.age !== undefined && patientData?.demographics?.age !== null
                         ? `${patientData.demographics.age} yrs`
+                        : 'Not Set'}
+                    </Text>
+                  </View>
+                  <View style={styles.infoCol}>
+                    <Text style={styles.infoLabel}>DOB</Text>
+                    <Text style={styles.infoValue}>
+                      {patientData?.demographics?.dateOfBirth
+                        ? new Date(patientData.demographics.dateOfBirth).toLocaleDateString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })
                         : 'Not Set'}
                     </Text>
                   </View>
@@ -956,14 +996,37 @@ export const ProfileScreen: React.FC<{ navigation?: any; route?: any }> = ({ nav
                 </View>
               </View>
 
-              {/* Age & Phone */}
+              {/* DOB, Age & Phone */}
+              <Input
+                label="Date of Birth (YYYY-MM-DD)"
+                value={editDob}
+                onChangeText={(val) => {
+                  setEditDob(val);
+                  if (val.length === 10) {
+                    const bDate = new Date(val);
+                    if (!isNaN(bDate.getTime())) {
+                      const today = new Date();
+                      let a = today.getFullYear() - bDate.getFullYear();
+                      const m = today.getMonth() - bDate.getMonth();
+                      if (m < 0 || (m === 0 && today.getDate() < bDate.getDate())) {
+                        a--;
+                      }
+                      if (a >= 0) setEditAge(String(a));
+                    }
+                  }
+                }}
+                placeholder="e.g. 1998-08-15"
+                helperText="Entering Date of Birth automatically calculates and verifies your Age"
+                leadingIcon={<Ionicons name="calendar-outline" size={18} color={colors.textMuted} />}
+              />
+
               <Input
                 label="Age (Years)"
                 value={editAge}
                 onChangeText={setEditAge}
                 placeholder="e.g. 26"
                 keyboardType="numeric"
-                leadingIcon={<Ionicons name="calendar-outline" size={18} color={colors.textMuted} />}
+                leadingIcon={<Ionicons name="time-outline" size={18} color={colors.textMuted} />}
               />
 
               <Input

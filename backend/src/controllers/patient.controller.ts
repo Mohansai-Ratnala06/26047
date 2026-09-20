@@ -107,6 +107,13 @@ export const updateMe = async (req: Request, res: Response) => {
       await User.findByIdAndUpdate(userId, { abhaId: identifiers.abhaId }).catch(() => {});
     }
 
+    if (demographics?.firstName) {
+      const fullName = `${demographics.firstName} ${demographics.lastName || ''}`.trim();
+      if (fullName) {
+        await User.findByIdAndUpdate(userId, { name: fullName }).catch(() => {});
+      }
+    }
+
     if (!patient) {
       const response: ApiResponse = { success: false, message: 'Patient profile not found' };
       return res.status(404).json(response);

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import HealthProfile from '../models/HealthProfile';
+import User from '../models/User';
 import { ApiResponse } from '../types';
 import { resolvePatientId } from '../middleware/patientResolver';
 
@@ -47,6 +48,9 @@ export const updateHealthProfile = async (req: Request, res: Response) => {
       profile = new HealthProfile({ patientId, ...req.body });
       await profile.save();
     }
+
+    // Mark onboarding completed for this authenticated patient
+    await User.findByIdAndUpdate(userId, { onboardingCompleted: true }).catch(() => {});
 
     const response: ApiResponse = { success: true, data: profile };
     res.status(200).json(response);

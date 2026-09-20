@@ -15,7 +15,7 @@ interface AuthState {
   signUp: (data: SignUpData) => Promise<boolean>;
   logout: () => Promise<void>;
   clearError: () => void;
-  completeOnboarding: () => void;
+  completeOnboarding: (updatedName?: string) => void;
   // Development shortcut to enter home directly
   demoBypass: () => void;
 }
@@ -120,8 +120,14 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   clearError: () => set({ error: null }),
 
-  completeOnboarding: () => set((state) => ({
-    user: state.user ? { ...state.user, onboardingCompleted: true } : null
+  completeOnboarding: (updatedName?: string) => set((state) => ({
+    user: state.user
+      ? {
+          ...state.user,
+          name: updatedName || state.user.name,
+          onboardingCompleted: true,
+        }
+      : null,
   })),
 
   demoBypass: () => {

@@ -6,20 +6,19 @@ export interface PatientProfile {
     preferredName?: string;
     dateOfBirth?: string;
     gender?: string;
+    age?: number;
+    bloodGroup?: string;
   };
   communication?: {
     preferredLanguage?: string;
     interactionPreference?: string;
     accessibility?: string[];
   };
-  healthSnapshot?: {
-    generalStatus?: string;
-    broadConditions?: string[];
-  };
   medicinesAllergies?: {
     usesRegularMedicines?: boolean;
     medicines?: string[];
     allergies?: string[];
+    chronicConditions?: string[];
   };
   lifestyle?: {
     activityLevel?: string;

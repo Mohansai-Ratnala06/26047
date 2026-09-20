@@ -7,6 +7,7 @@ export interface IUser extends Document {
   passwordHash: string;
   abhaId?: string;
   role: 'patient' | 'doctor' | 'admin';
+  onboardingCompleted?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,6 +20,7 @@ const UserSchema = new Schema<IUser>(
     passwordHash: { type: String, required: true },
     abhaId: { type: String, unique: true, sparse: true },
     role: { type: String, enum: ['patient', 'doctor', 'admin'], default: 'patient' },
+    onboardingCompleted: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
