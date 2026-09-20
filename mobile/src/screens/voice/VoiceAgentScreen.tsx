@@ -818,21 +818,28 @@ export const VoiceAgentScreen: React.FC = () => {
         </View>
 
         <View style={styles.headerRightActions}>
-          {/* Quick Header Assessment Button (Direct access when clinical output is available) */}
-          {(brainResponse?.clinicalOutput || chatMessages.some((m) => m.clinicalOutput)) ? (
-            <TouchableOpacity
-              onPress={() =>
-                navigation.navigate('ClinicalResults', {
-                  clinicalOutput: (brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)!,
-                  conversationId: conversationId || undefined,
-                })
-              }
-              style={styles.headerReportActionBtn}
-              accessibilityLabel="View Assessment Report"
-            >
-              <Ionicons name="document-text" size={18} color={colors.primary} />
-            </TouchableOpacity>
-          ) : null}
+          {/* Quick Header Assessment Button (Direct access ONLY when pre-consultation report is ready) */}
+          {(() => {
+            const activeReportOutput =
+              brainResponse?.clinicalOutput?.pre_consultation_report
+                ? brainResponse.clinicalOutput
+                : chatMessages.slice().reverse().find((m) => m.clinicalOutput?.pre_consultation_report)?.clinicalOutput;
+            if (!activeReportOutput) return null;
+            return (
+              <TouchableOpacity
+                onPress={() =>
+                  navigation.navigate('ClinicalResults', {
+                    clinicalOutput: activeReportOutput,
+                    conversationId: conversationId || undefined,
+                  })
+                }
+                style={styles.headerReportActionBtn}
+                accessibilityLabel="View Assessment Report"
+              >
+                <Ionicons name="document-text" size={18} color={colors.primary} />
+              </TouchableOpacity>
+            );
+          })()}
 
           <TouchableOpacity
             onPress={handleOpenHistoryModal}
@@ -1076,8 +1083,12 @@ export const VoiceAgentScreen: React.FC = () => {
                       ) : null}
                     </GlassCard>
 
-                    {/* Grounded Ayurvedic Home Care Card ONLY for the latest conversation turn */}
+                    {/* Grounded Ayurvedic Home Care Card ONLY for the latest conversation turn and when NOT in acute emergency */}
                     {isLatestTurn &&
+                    !turnClinicalOutput?.safety_findings?.immediate_attention_required &&
+                    turnClinicalOutput?.triage_disposition !== 'emergency' &&
+                    !turnClinicalOutput?.immediateAttentionRequired &&
+                    (turnClinicalOutput?.severity_score == null || turnClinicalOutput.severity_score < 80) &&
                     turnClinicalOutput?.ayurveda_recommendation?.decision === 'eligible' &&
                     turnClinicalOutput.ayurveda_recommendation.recommendations?.length > 0 ? (
                       <Card variant="mintWash" style={styles.homeCareCard}>
@@ -1100,11 +1111,18 @@ export const VoiceAgentScreen: React.FC = () => {
                       </Card>
                     ) : null}
 
-                    {/* Grounded Clinical Assessment or Escalation Card attached directly to the latest turn */}
-                    {isLatestTurn && (turnClinicalOutput || brainResponse?.clinicalOutput) ? (
-                      ((turnClinicalOutput || brainResponse?.clinicalOutput)?.consultation_recommended ||
-                       (turnClinicalOutput || brainResponse?.clinicalOutput)?.immediateAttentionRequired ||
-                       ((turnClinicalOutput || brainResponse?.clinicalOutput)?.severity_score && (turnClinicalOutput || brainResponse?.clinicalOutput).severity_score >= 60)) ? (
+                    {/* Grounded Clinical Assessment or Escalation Card attached directly to the latest turn ONLY when pre-consultation report is ready */}
+                    {(() => {
+                      const targetOutput = turnClinicalOutput || (isLatestTurn ? brainResponse?.clinicalOutput : null);
+                      if (!isLatestTurn || !targetOutput || !targetOutput.pre_consultation_report) return null;
+
+                      const isEscalated =
+                        targetOutput.consultation_recommended ||
+                        targetOutput.immediateAttentionRequired ||
+                        targetOutput.safety_findings?.immediate_attention_required ||
+                        (targetOutput.severity_score != null && targetOutput.severity_score >= 60);
+
+                      return isEscalated ? (
                         <View style={styles.chatEscalationCard}>
                           <View style={styles.escalationHeaderRow}>
                             <Ionicons name="medical" size={18} color={colors.error} />
@@ -1117,7 +1135,7 @@ export const VoiceAgentScreen: React.FC = () => {
                             style={styles.chatEscalationBtn}
                             onPress={() =>
                               navigation.navigate('ClinicalResults', {
-                                clinicalOutput: (turnClinicalOutput || brainResponse?.clinicalOutput)!,
+                                clinicalOutput: targetOutput,
                                 conversationId: conversationId || undefined,
                               })
                             }
@@ -1131,7 +1149,7 @@ export const VoiceAgentScreen: React.FC = () => {
                           style={styles.chatReportCardBtn}
                           onPress={() =>
                             navigation.navigate('ClinicalResults', {
-                              clinicalOutput: (turnClinicalOutput || brainResponse?.clinicalOutput)!,
+                              clinicalOutput: targetOutput,
                               conversationId: conversationId || undefined,
                             })
                           }
@@ -1146,8 +1164,8 @@ export const VoiceAgentScreen: React.FC = () => {
                           </View>
                           <Ionicons name="chevron-forward" size={18} color={colors.primary} />
                         </TouchableOpacity>
-                      )
-                    ) : null}
+                      );
+                    })()}
                   </View>
                 );
               })}
@@ -1170,10 +1188,17 @@ export const VoiceAgentScreen: React.FC = () => {
           ) : null}
 
           {/* In-Voice Mode Grounded Clinical Assessment Card fallback if no turns container active */}
-          {chatMessages.length === 0 && brainResponse?.clinicalOutput ? (
-            brainResponse?.clinicalOutput?.consultation_recommended ||
-            brainResponse?.immediateAttentionRequired ||
-            (brainResponse?.clinicalOutput?.severity_score && brainResponse.clinicalOutput.severity_score >= 60) ? (
+          {(() => {
+            const fallbackOutput = brainResponse?.clinicalOutput;
+            if (chatMessages.length !== 0 || !fallbackOutput || !fallbackOutput.pre_consultation_report) return null;
+
+            const isEscalated =
+              fallbackOutput.consultation_recommended ||
+              brainResponse.immediateAttentionRequired ||
+              fallbackOutput.safety_findings?.immediate_attention_required ||
+              (fallbackOutput.severity_score != null && fallbackOutput.severity_score >= 60);
+
+            return isEscalated ? (
               <View style={styles.chatEscalationCard}>
                 <View style={styles.escalationHeaderRow}>
                   <Ionicons name="medical" size={18} color={colors.error} />
@@ -1186,7 +1211,7 @@ export const VoiceAgentScreen: React.FC = () => {
                   style={styles.chatEscalationBtn}
                   onPress={() =>
                     navigation.navigate('ClinicalResults', {
-                      clinicalOutput: brainResponse.clinicalOutput!,
+                      clinicalOutput: fallbackOutput,
                       conversationId: conversationId || undefined,
                     })
                   }
@@ -1200,7 +1225,7 @@ export const VoiceAgentScreen: React.FC = () => {
                 style={styles.chatReportCardBtn}
                 onPress={() =>
                   navigation.navigate('ClinicalResults', {
-                    clinicalOutput: brainResponse.clinicalOutput!,
+                    clinicalOutput: fallbackOutput,
                     conversationId: conversationId || undefined,
                   })
                 }
@@ -1215,8 +1240,8 @@ export const VoiceAgentScreen: React.FC = () => {
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.primary} />
               </TouchableOpacity>
-            )
-          ) : null}
+            );
+          })()}
 
           {/* Floating Bottom Control Bar (Reference 2: Chat Icon, Center Mic, Action) */}
           <View style={styles.voiceBottomBar}>
@@ -1379,11 +1404,21 @@ export const VoiceAgentScreen: React.FC = () => {
               </View>
             ) : null}
 
-            {/* In-feed Clinical Assessment or Escalation card in Chat Mode */}
-            {(brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput) ? (
-              ((brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)?.consultation_recommended ||
-               (brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)?.immediateAttentionRequired ||
-               ((brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)?.severity_score && (brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput).severity_score >= 60)) ? (
+            {/* In-feed Clinical Assessment or Escalation card in Chat Mode ONLY when pre-consultation report is ready */}
+            {(() => {
+              const activeChatOutput =
+                brainResponse?.clinicalOutput?.pre_consultation_report
+                  ? brainResponse.clinicalOutput
+                  : chatMessages.slice().reverse().find((m) => m.clinicalOutput?.pre_consultation_report)?.clinicalOutput;
+              if (!activeChatOutput) return null;
+
+              const isEscalated =
+                activeChatOutput.consultation_recommended ||
+                activeChatOutput.immediateAttentionRequired ||
+                activeChatOutput.safety_findings?.immediate_attention_required ||
+                (activeChatOutput.severity_score != null && activeChatOutput.severity_score >= 60);
+
+              return isEscalated ? (
                 <View style={styles.chatEscalationCard}>
                   <View style={styles.escalationHeaderRow}>
                     <Ionicons name="medical" size={18} color={colors.error} />
@@ -1396,7 +1431,7 @@ export const VoiceAgentScreen: React.FC = () => {
                     style={styles.chatEscalationBtn}
                     onPress={() =>
                       navigation.navigate('ClinicalResults', {
-                        clinicalOutput: (brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)!,
+                        clinicalOutput: activeChatOutput,
                         conversationId: conversationId || undefined,
                       })
                     }
@@ -1410,7 +1445,7 @@ export const VoiceAgentScreen: React.FC = () => {
                   style={styles.chatReportCardBtn}
                   onPress={() =>
                     navigation.navigate('ClinicalResults', {
-                      clinicalOutput: (brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)!,
+                      clinicalOutput: activeChatOutput,
                       conversationId: conversationId || undefined,
                     })
                   }
@@ -1425,8 +1460,8 @@ export const VoiceAgentScreen: React.FC = () => {
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.primary} />
                 </TouchableOpacity>
-              )
-            ) : null}
+              );
+            })()}
           </ScrollView>
 
           {/* Gemini-Style Floating Pill Input Bar - Anchored right above bottom tabs */}

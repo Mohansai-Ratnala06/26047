@@ -245,6 +245,39 @@ CONVERSATIONAL PERSONA & TONE RULES:
         Set "confirm_start_new_episode": false
         Continue under the existing episode.
 
+7. CRITICAL ANTI-HALLUCINATION & SLOT EXTRACTION INTEGRITY:
+   - STRICT PATIENT CONFIRMATION:
+     You MUST ONLY extract symptoms, locations, characters, durations, or red flags into "extracted_slots", "associatedSymptoms", "alarm_features_identified", or "red_flags_present" IF THE PATIENT HAS EXPLICITLY STATED OR CONFIRMED THEM in their messages (the current message or previous patient messages).
+   - ABSOLUTE PROHIBITION ON EXTRACTING INQUIRY QUESTIONS:
+     NEVER, under ANY circumstances, extract symptoms that YOU (the companion) are merely inquiring about or asking as part of a follow-up question!
+     * Example VIOLATION: If you ask: "Have you noticed any evening fevers or weight loss?", you must NOT add "fever" or "weight loss" to associatedSymptoms, alarm_features_identified, or red_flags_present in that turn! They can ONLY be added IF AND WHEN the patient explicitly affirms them in a subsequent turn.
+     * Example CORRECT:
+       - Patient says: "I have had a cough for 6 months."
+       - Companion asks: "Have you had any night sweats or weight loss?"
+       - extracted_slots.associatedSymptoms: [] (EMPTY! Patient has not affirmed yet).
+       - risk_convergence.alarm_features_identified: [] (EMPTY!).
+   - SEVERITY SCORE INTEGRITY:
+     Evaluate severity_score_0_to_100 based ONLY on the patient's verified, confirmed presentation. Do NOT inflate it with unverified symptoms you merely asked about.
+
+8. ADAPTIVE FOLLOW-UP PROGRESSION & REPORT TIMING (NO FIXED TURN COUNTS):
+   - FOLLOW-UP MUST NEVER BE BYPASSED:
+     Except for immediate life-threatening emergencies (acute severe crushing chest pain, stroke signs, severe gasping breathlessness), NEVER rush to conclude intake or declare the report ready on Turn 1!
+   - MULTI-TURN ADAPTIVE FLOW (PURELY DRIVEN BY CLINICAL SUFFICIENCY):
+     Phase 1: Empathetic Intake & Facet Exploration (across turns as needed):
+       • Warmly listen to patient's complaint.
+       • If details are missing, gently explore missing clinical facets (duration/trajectory, cardinal alarm symptoms, prior treatments/medicines) ONE caring question per turn.
+       • Keep "clinical_evidence_sufficient": false, "request_report_permission": false, "patient_consented_to_report": false.
+     Phase 2: Empathetic Risk Explanation & Consent Request:
+       • Once the clinical picture is sufficiently clear ("clinical_evidence_sufficient": true), deliver the warm, non-alarmist explanation.
+       • Politely ask permission in the patient's language (${patientLanguage}):
+         "With your permission, shall I prepare your complete Pre-Consultation Summary with your full timeline and details so your doctor has the full picture and nothing gets overlooked?"
+       • Set "request_report_permission": true, "patient_consented_to_report": false.
+       • DO NOT declare the report ready in this turn, because you are asking for permission!
+     Phase 3: Real-Time Report Generation (Only After Consent):
+       • When the patient responds affirmatively ("yes", "please do", "sure", "అవును", "తయారు చేయండి", "హా", etc.):
+         - Set "patient_consented_to_report": true, "request_report_permission": false.
+         - Now and ONLY now declare: "I have prepared your complete Clinical Assessment Report in real-time. You can preview it below to show your doctor."
+
 ${longitudinalMemoryBlock}
 
 PATIENT & EPISODE CONTEXT:
@@ -271,7 +304,7 @@ Respond with strictly valid JSON only:
     "location": "string or null",
     "radiation": "string or null",
     "character": "string or null",
-    "associatedSymptoms": ["string"]
+    "associatedSymptoms": ["string - ONLY symptoms explicitly affirmed by the patient. NEVER include symptoms you merely inquired about."]
   },
   "remedy_tracking": {
     "remedy_name": "string or null",
@@ -281,7 +314,7 @@ Respond with strictly valid JSON only:
   },
   "symptom_trajectory": "improving" | "stable" | "worsening" | "new_symptom",
   "severity_score_0_to_100": number,
-  "red_flags_present": ["string"],
+  "red_flags_present": ["string - ONLY red flags explicitly stated or confirmed by the patient. NEVER include symptoms you merely asked about."],
   "consultation_recommended": boolean,
   "recommended_specialty": "string (e.g. Gastroenterology, Pulmonology, General Medicine, Cardiology, Neurology)",
   "consultation_questions": [
@@ -331,7 +364,7 @@ Respond with strictly valid JSON only:
   "risk_convergence": {
     "pattern_detected": "boolean - true if any insidious, chronic (>2-3 weeks), or refractory risk trajectory is identified",
     "suspected_risk_nature": "string or null - concise clinical nature of the risk pattern (e.g. '6-month chronic cough with systemic B-symptoms and refractory antibiotic history; rule out pulmonary TB or occult neoplasm')",
-    "alarm_features_identified": ["string - specific cardinal alarm symptoms confirmed by patient (e.g. 'evening fevers', 'night sweats', 'weight loss')"],
+    "alarm_features_identified": ["string - specific cardinal alarm symptoms EXPLICITLY CONFIRMED by the patient. NEVER include symptoms you merely asked about."],
     "prior_treatments_noted": "string or null - summary of past clinic visits, syrups, antibiotics, or tests tried by patient",
     "clinical_evidence_sufficient": "boolean - true if the clinical picture is sufficiently understood to move to empathetic risk explanation and consent",
     "risk_explained_to_patient": "boolean - true if you delivered the empathetic, non-alarmist risk explanation in nurse_dialogue this turn",
@@ -435,20 +468,47 @@ Return strictly valid JSON only.
       /\b(yes|yeah|yep|sure|ok|okay|please|prepare|do it|go ahead|proceed|create it)\b/i.test(patientMessageText) ||
       /हाँ|हां|तैयार|बनाओ|बनाइए|ज़रूर|जरूर|ठीक\s*है/i.test(patientMessageText);
 
-    if ((stateSnapshot.pendingReportPermission || stateSnapshot.chronicRiskProbe?.consentRequested) && isAffirmativeConsent) {
+    // Patient Text Corpus across current turn and prior turns in this episode for anti-hallucination verification
+    const currentPatientMsg = (input.message.original_text || '') + ' ' + (input.message.english_text || '');
+    const priorPatientMsgs = (input.previous_conversations || [])
+      .filter((m: any) => m.role === 'patient')
+      .map((m: any) => m.content || '')
+      .join(' ');
+    const combinedPatientCorpus = (currentPatientMsg + ' ' + priorPatientMsgs).toLowerCase();
+
+    // Helper to verify symptom was mentioned in patient corpus or already preserved in state
+    const isConfirmedByPatient = (symText: string, existingList: string[] = []): boolean => {
+      if (!symText || typeof symText !== 'string') return false;
+      const s = symText.trim().toLowerCase();
+      if (existingList.some((e) => e.toLowerCase() === s)) return true;
+      const words = s.split(/\s+/).filter((w) => w.length >= 3);
+      if (words.length === 0) return combinedPatientCorpus.includes(s);
+      return words.some((w) => combinedPatientCorpus.includes(w));
+    };
+
+    // Real-Time Consent Safeguard:
+    // Consent to prepare clinical report can ONLY be granted if permission was actually pending
+    // from a prior turn and patient confirmed affirmatively.
+    // Answering "yes" to an intake question (e.g. "Do you have fever? Yes") does NOT constitute report consent!
+    const isConsentPending = Boolean(
+      stateSnapshot.pendingReportPermission ||
+      stateSnapshot.chronicRiskProbe?.consentRequested
+    );
+
+    const effectivePatientConsent =
+      isConsentPending &&
+      (isAffirmativeConsent || parsedLlm.patient_consented_to_report === true);
+
+    if (effectivePatientConsent) {
       parsedLlm.patient_consented_to_report = true;
       parsedLlm.request_report_permission = false;
       stateSnapshot.pendingReportPermission = false;
-      stateSnapshot.clinicalReportGenerated = true;
+    } else {
+      parsedLlm.patient_consented_to_report = false;
     }
 
-    // Handle Report Permission & Real-Time Generation State
-    if (parsedLlm.request_report_permission && !parsedLlm.patient_consented_to_report) {
+    if (parsedLlm.request_report_permission && !effectivePatientConsent) {
       stateSnapshot.pendingReportPermission = true;
-    }
-    if (parsedLlm.patient_consented_to_report) {
-      stateSnapshot.pendingReportPermission = false;
-      stateSnapshot.clinicalReportGenerated = true;
     }
 
     // 3B. MERGE RISK CONVERGENCE & LONGITUDINAL PROBE OUTCOMES
@@ -474,12 +534,17 @@ Return strictly valid JSON only.
         }
 
         if (Array.isArray(rc.alarm_features_identified) && rc.alarm_features_identified.length > 0) {
-          stateSnapshot.chronicRiskProbe.alarmSignsFound = Array.from(
-            new Set([
-              ...stateSnapshot.chronicRiskProbe.alarmSignsFound,
-              ...rc.alarm_features_identified.filter(Boolean),
-            ])
-          );
+          const confirmedAlarms = rc.alarm_features_identified
+            .filter(Boolean)
+            .filter((a: string) => isConfirmedByPatient(a, stateSnapshot.chronicRiskProbe?.alarmSignsFound || []));
+          if (confirmedAlarms.length > 0) {
+            stateSnapshot.chronicRiskProbe.alarmSignsFound = Array.from(
+              new Set([
+                ...stateSnapshot.chronicRiskProbe.alarmSignsFound,
+                ...confirmedAlarms,
+              ])
+            );
+          }
         }
 
         if (rc.prior_treatments_noted && typeof rc.prior_treatments_noted === 'string') {
@@ -532,7 +597,9 @@ Return strictly valid JSON only.
       associatedSymptoms: Array.from(
         new Set([
           ...(stateSnapshot.intakeSlots.associatedSymptoms || []),
-          ...(extractedSlots.associatedSymptoms || []),
+          ...((extractedSlots.associatedSymptoms || []).filter((s: string) =>
+            isConfirmedByPatient(s, stateSnapshot.intakeSlots.associatedSymptoms || [])
+          )),
         ])
       ),
     };
@@ -540,7 +607,9 @@ Return strictly valid JSON only.
     const newSeverityScore = parsedLlm.severity_score_0_to_100 ?? stateSnapshot.severityScore ?? 30;
     stateSnapshot.severityScore = newSeverityScore;
 
-    const detectedRedFlags = parsedLlm.red_flags_present || [];
+    const detectedRedFlags = (parsedLlm.red_flags_present || []).filter((rf: string) =>
+      isConfirmedByPatient(rf, stateSnapshot.redFlagsPresent || [])
+    );
     if (detectedRedFlags.length > 0) {
       stateSnapshot.redFlagsChecked = true;
       stateSnapshot.redFlagsPresent = Array.from(
@@ -725,32 +794,70 @@ Return strictly valid JSON only.
     ];
     stateSnapshot.consultationQuestions = questions;
 
+    let finalNurseMessage = parsedLlm.nurse_dialogue || '';
+
+    // Model Dialogue Safeguard: If the nurse explicitly declared the report is prepared or ready below,
+    // the report MUST be generated and included in clinical_output, BUT ONLY after turn 1 (unless emergency)
+    const assistantAnnouncedReportReady =
+      stateSnapshot.turnCount > 1 && (
+        /రిపోర్ట్‌ను సిద్ధం చేశా|రిపోర్ట్ సిద్ధం చేశా|రిపోర్ట్ సిద్ధంగా ఉం|క్రింద.*చూసి|డాక్టర్ గారికి చూపించవచ్చు/i.test(finalNurseMessage) ||
+        /prepared.*(report|summary)|report.*ready|summary.*ready|preview.*below|view.*below/i.test(finalNurseMessage) ||
+        /रिपोर्ट.*तैयार|रिपोर्ट.*देख/i.test(finalNurseMessage)
+      );
+
+    const isLifeThreateningEmergency =
+      newSeverityScore >= 85 ||
+      detectedRedFlags.some((rf: string) =>
+        /chest pain|difficulty breathing|breathless|unconscious|stroke|hemoptysis|cyanosis|seizure|severe trauma|active bleeding/i.test(rf)
+      );
+
+    const isAskingPermission =
+      parsedLlm.request_report_permission === true &&
+      !effectivePatientConsent &&
+      !assistantAnnouncedReportReady;
+
+    const patientConsented =
+      effectivePatientConsent ||
+      assistantAnnouncedReportReady ||
+      (stateSnapshot.clinicalReportGenerated === true && stateSnapshot.turnCount > 1);
+
+    const shouldGenerateClinicalReport =
+      isLifeThreateningEmergency ||
+      (!isAskingPermission && patientConsented && (stateSnapshot.turnCount > 1 || parsedLlm.risk_convergence?.clinical_evidence_sufficient));
+
     const soap = parsedLlm.pre_consultation_summary || {};
-    stateSnapshot.preConsultationReport = {
-      generatedAt: new Date().toISOString(),
-      patientId,
-      episodeId,
-      chiefComplaint: stateSnapshot.chiefComplaint || 'Acute Symptom Intake',
-      hpiSummary: soap.hpiSummary || `${stateSnapshot.chiefComplaint || 'Symptom'} intake evaluated with severity score ${newSeverityScore}/100.`,
-      severityScore: newSeverityScore,
-      timeline: [
-        `Intake initiated: ${stateSnapshot.lastUpdated || new Date().toISOString()}`,
-        `Current clinical severity evaluated at ${newSeverityScore}/100`,
-        ...stateSnapshot.remediesOffered.map(
-          (r) => `Remedy: ${r.remedy} (${r.status || 'suggested'}${r.reliefReported ? `, relief: ${r.reliefReported}` : ''})`
-        ),
-      ],
-      remediesTried: stateSnapshot.remediesOffered.map((r) => r.remedy),
-      redFlags: stateSnapshot.redFlagsPresent,
-      recommendedSpecialty: parsedLlm.recommended_specialty || 'General Physician',
-      doctorSummarySOAP: {
-        highlightedProblem: soap.highlighted_problem || `${stateSnapshot.chiefComplaint || 'Acute Complaint'} [Severity: ${newSeverityScore}/100]`,
-        subjective: soap.soap_subjective || `Patient reports ${stateSnapshot.chiefComplaint || 'discomfort'} with character: ${stateSnapshot.intakeSlots.character || 'unspecified'}, duration: ${stateSnapshot.intakeSlots.duration || 'ongoing'}.`,
-        objective: soap.soap_objective || `Severity Score: ${newSeverityScore}/100. Reported vitals: ${JSON.stringify(stateSnapshot.vitalsMentioned)}`,
-        assessment: soap.soap_assessment || (detectedRedFlags.length > 0 ? 'Urgent / Red-Flag Presentation' : 'Elevated severity requiring clinical consultation'),
-        plan: soap.soap_plan || 'Direct physician evaluation, physical examination, and appropriate diagnostic workup.',
-      },
-    };
+    if (shouldGenerateClinicalReport) {
+      stateSnapshot.clinicalReportGenerated = true;
+      stateSnapshot.pendingReportPermission = false;
+      stateSnapshot.preConsultationReport = {
+        generatedAt: new Date().toISOString(),
+        patientId,
+        episodeId,
+        chiefComplaint: stateSnapshot.chiefComplaint || 'Acute Symptom Intake',
+        hpiSummary: soap.hpiSummary || `${stateSnapshot.chiefComplaint || 'Symptom'} intake evaluated with severity score ${newSeverityScore}/100.`,
+        severityScore: newSeverityScore,
+        timeline: [
+          `Intake initiated: ${stateSnapshot.lastUpdated || new Date().toISOString()}`,
+          `Current clinical severity evaluated at ${newSeverityScore}/100`,
+          ...stateSnapshot.remediesOffered.map(
+            (r) => `Remedy: ${r.remedy} (${r.status || 'suggested'}${r.reliefReported ? `, relief: ${r.reliefReported}` : ''})`
+          ),
+        ],
+        remediesTried: stateSnapshot.remediesOffered.map((r) => r.remedy),
+        redFlags: stateSnapshot.redFlagsPresent,
+        recommendedSpecialty: parsedLlm.recommended_specialty || 'General Physician',
+        doctorSummarySOAP: {
+          highlightedProblem: soap.highlighted_problem || `${stateSnapshot.chiefComplaint || 'Acute Complaint'} [Severity: ${newSeverityScore}/100]`,
+          subjective: soap.soap_subjective || `Patient reports ${stateSnapshot.chiefComplaint || 'discomfort'} with character: ${stateSnapshot.intakeSlots.character || 'unspecified'}, duration: ${stateSnapshot.intakeSlots.duration || 'ongoing'}.`,
+          objective: soap.soap_objective || `Severity Score: ${newSeverityScore}/100. Reported vitals: ${JSON.stringify(stateSnapshot.vitalsMentioned)}`,
+          assessment: soap.soap_assessment || (detectedRedFlags.length > 0 ? 'Urgent / Red-Flag Presentation' : 'Elevated severity requiring clinical consultation'),
+          plan: soap.soap_plan || 'Direct physician evaluation, physical examination, and appropriate diagnostic workup.',
+        },
+      };
+    } else {
+      stateSnapshot.preConsultationReport = null;
+      stateSnapshot.clinicalReportGenerated = false;
+    }
 
     stateSnapshot.triageDisposition =
       detectedRedFlags.length > 0
@@ -781,20 +888,20 @@ Return strictly valid JSON only.
     const fullNarrative = `
 PATIENT PRESENTATION:
 Chief Complaint: ${stateSnapshot.chiefComplaint || 'Acute Symptom Intake'}
-History of Present Illness: ${stateSnapshot.preConsultationReport.hpiSummary}
+History of Present Illness: ${stateSnapshot.preConsultationReport?.hpiSummary || 'Clinical intake in progress'}
 
 CLINICAL SOAP ASSESSMENT:
-• Subjective: ${stateSnapshot.preConsultationReport.doctorSummarySOAP.subjective}
-• Objective: ${stateSnapshot.preConsultationReport.doctorSummarySOAP.objective}
-• Assessment: ${stateSnapshot.preConsultationReport.doctorSummarySOAP.assessment}
-• Plan: ${stateSnapshot.preConsultationReport.doctorSummarySOAP.plan}
+• Subjective: ${stateSnapshot.preConsultationReport?.doctorSummarySOAP?.subjective || 'Intake in progress'}
+• Objective: ${stateSnapshot.preConsultationReport?.doctorSummarySOAP?.objective || `Severity Score: ${newSeverityScore}/100`}
+• Assessment: ${stateSnapshot.preConsultationReport?.doctorSummarySOAP?.assessment || 'In-progress evaluation'}
+• Plan: ${stateSnapshot.preConsultationReport?.doctorSummarySOAP?.plan || 'Direct physician evaluation upon completion.'}
 `.trim();
 
     const standardizedClinicalOutput = {
       severity_score: newSeverityScore,
       triage_disposition: stateSnapshot.triageDisposition,
-      consultation_recommended: stateSnapshot.consultationRecommended,
-      pre_consultation_report: stateSnapshot.preConsultationReport,
+      consultation_recommended: shouldGenerateClinicalReport ? stateSnapshot.consultationRecommended : false,
+      pre_consultation_report: shouldGenerateClinicalReport ? stateSnapshot.preConsultationReport : null,
       safety_findings: {
         immediate_attention_required: detectedRedFlags.length > 0 || newSeverityScore >= 80,
         red_flags: stateSnapshot.redFlagsPresent,
@@ -856,7 +963,13 @@ CLINICAL SOAP ASSESSMENT:
             allergies: input.patient_profile?.allergies || [],
           },
         },
-        soap: stateSnapshot.preConsultationReport.doctorSummarySOAP,
+        soap: stateSnapshot.preConsultationReport?.doctorSummarySOAP || {
+          highlightedProblem: stateSnapshot.chiefComplaint || 'Clinical Consultation',
+          subjective: 'Intake in progress',
+          objective: `Severity Score: ${newSeverityScore}/100`,
+          assessment: 'In-progress clinical assessment',
+          plan: 'Direct physician evaluation upon completion.',
+        },
       },
       consultation_questions: {
         questions,
@@ -867,56 +980,6 @@ CLINICAL SOAP ASSESSMENT:
       },
       dashavidha_atura_pariksha: dashavidhaProfile,
     };
-
-    let finalNurseMessage = parsedLlm.nurse_dialogue || '';
-
-    // Model Dialogue Safeguard: If the nurse explicitly declared the report is prepared or ready below,
-    // the report MUST be generated and included in clinical_output
-    const assistantAnnouncedReportReady =
-      /రిపోర్ట్‌ను సిద్ధం చేశా|రిపోర్ట్ సిద్ధం చేశా|రిపోర్ట్ సిద్ధంగా ఉం|క్రింద.*చూసి|డాక్టర్ గారికి చూపించవచ్చు/i.test(finalNurseMessage) ||
-      /prepared.*(report|summary)|report.*ready|summary.*ready|preview.*below|view.*below/i.test(finalNurseMessage) ||
-      /रिपोर्ट.*तैयार|रिपोर्ट.*देख/i.test(finalNurseMessage);
-
-    if (assistantAnnouncedReportReady) {
-      parsedLlm.patient_consented_to_report = true;
-      parsedLlm.request_report_permission = false;
-      stateSnapshot.pendingReportPermission = false;
-      stateSnapshot.clinicalReportGenerated = true;
-    }
-
-    // Safety and timing logic for Real-Time Clinical Assessment & Home Care generation:
-    // Rule: The assessment report MUST NOT be generated after a single question or before follow-up completes.
-    // It is ONLY generated in real-time when:
-    // 1. Immediate life-threatening emergency is detected (immediate patient safety, e.g. severe dyspnea, chest pain)
-    // 2. High severity (>=60) or completed follow-up AND patient gave permission/consent to prepare the report
-    // IMPORTANT: If the nurse is actively asking for permission (request_report_permission: true),
-    // wait for the patient's reply on the next turn! Do NOT prematurely show the report while asking for permission!
-    const isLifeThreateningEmergency =
-      newSeverityScore >= 85 ||
-      detectedRedFlags.some((rf: string) =>
-        /chest pain|difficulty breathing|breathless|unconscious|stroke|hemoptysis|cyanosis|seizure/i.test(rf)
-      );
-
-    const isAskingPermission =
-      parsedLlm.request_report_permission === true &&
-      !parsedLlm.patient_consented_to_report &&
-      !assistantAnnouncedReportReady;
-
-    const patientConsented =
-      parsedLlm.patient_consented_to_report === true ||
-      stateSnapshot.clinicalReportGenerated === true ||
-      assistantAnnouncedReportReady;
-
-    const shouldGenerateClinicalReport =
-      isLifeThreateningEmergency ||
-      (!isAskingPermission && patientConsented);
-
-    if (shouldGenerateClinicalReport) {
-      stateSnapshot.clinicalReportGenerated = true;
-      stateSnapshot.pendingReportPermission = false;
-    }
-
-    const isComplete = shouldGenerateClinicalReport;
 
     const status: 'in_progress' | 'complete' | 'emergency' =
       isLifeThreateningEmergency
@@ -930,7 +993,7 @@ CLINICAL SOAP ASSESSMENT:
       patient_id: patientId,
       status,
       conversation_message: finalNurseMessage,
-      information_complete: isComplete,
+      information_complete: shouldGenerateClinicalReport,
       missing_information: stateSnapshot.missingSlots,
       immediate_attention_required: detectedRedFlags.length > 0 || newSeverityScore >= 80,
       red_flag_status: detectedRedFlags.length > 0 ? 'red_flags_detected' : 'no_obvious_red_flags',
@@ -977,11 +1040,15 @@ CLINICAL SOAP ASSESSMENT:
   }
 
   private initializeOrMigrateState(
-
     existing: any,
     patientId: string,
     episodeId: string
   ): EpisodeClinicalState {
+    // 0. EPISODE BOUNDARY ISOLATION GUARD: Clean slate if previous state was from a different episode
+    if (existing && existing.episodeId && existing.episodeId.toString() !== episodeId.toString()) {
+      console.info(`[GeminiNurseBrain] Episode boundary crossed: ${existing.episodeId} !== ${episodeId}. Resetting to clean state.`);
+      existing = null;
+    }
     if (existing && typeof existing === 'object' && existing.intakeSlots && existing.remediesOffered) {
       return {
         ...existing,

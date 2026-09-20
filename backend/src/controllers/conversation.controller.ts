@@ -38,7 +38,8 @@ export const createConversation = async (req: Request, res: Response) => {
 
     // 3. Otherwise instantiate a fresh conversation linked to this episode & patient
     if (!conversation) {
-      const previousConv = await Conversation.findOne({ patientId }).sort({ createdAt: -1 });
+      // Only inherit state from a previous conversation belonging to the EXACT SAME episode
+      const previousConv = await Conversation.findOne({ episodeId, patientId }).sort({ createdAt: -1 });
 
       conversation = new Conversation({
         patientId,
