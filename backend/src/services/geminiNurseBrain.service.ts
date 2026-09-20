@@ -396,7 +396,7 @@ Return strictly valid JSON only.
 
         const response = await axios.post(url, payload, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 9000,
+          timeout: 25000,
         });
 
         if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -429,8 +429,21 @@ Return strictly valid JSON only.
       stateSnapshot.pendingEpisodeConfirmation = null;
     }
 
+    // Deterministic Affirmative Consent Detection across Indic and English languages
+    const isAffirmativeConsent =
+      /ఆ\s*సిద్ధం|సిద్ధం\s*చేయి|సిద్ధం\s*చేయండి|తయారు\s*చేయి|తయారు\s*చేయండి|చేయి|చేయండి|అవును|సరే|తప్పకుండా|చూపించు|వివరంగా|హా|హౌను/i.test(patientMessageText) ||
+      /\b(yes|yeah|yep|sure|ok|okay|please|prepare|do it|go ahead|proceed|create it)\b/i.test(patientMessageText) ||
+      /हाँ|हां|तैयार|बनाओ|बनाइए|ज़रूर|जरूर|ठीक\s*है/i.test(patientMessageText);
+
+    if ((stateSnapshot.pendingReportPermission || stateSnapshot.chronicRiskProbe?.consentRequested) && isAffirmativeConsent) {
+      parsedLlm.patient_consented_to_report = true;
+      parsedLlm.request_report_permission = false;
+      stateSnapshot.pendingReportPermission = false;
+      stateSnapshot.clinicalReportGenerated = true;
+    }
+
     // Handle Report Permission & Real-Time Generation State
-    if (parsedLlm.request_report_permission) {
+    if (parsedLlm.request_report_permission && !parsedLlm.patient_consented_to_report) {
       stateSnapshot.pendingReportPermission = true;
     }
     if (parsedLlm.patient_consented_to_report) {
@@ -857,6 +870,20 @@ CLINICAL SOAP ASSESSMENT:
 
     let finalNurseMessage = parsedLlm.nurse_dialogue || '';
 
+    // Model Dialogue Safeguard: If the nurse explicitly declared the report is prepared or ready below,
+    // the report MUST be generated and included in clinical_output
+    const assistantAnnouncedReportReady =
+      /రిపోర్ట్‌ను సిద్ధం చేశా|రిపోర్ట్ సిద్ధం చేశా|రిపోర్ట్ సిద్ధంగా ఉం|క్రింద.*చూసి|డాక్టర్ గారికి చూపించవచ్చు/i.test(finalNurseMessage) ||
+      /prepared.*(report|summary)|report.*ready|summary.*ready|preview.*below|view.*below/i.test(finalNurseMessage) ||
+      /रिपोर्ट.*तैयार|रिपोर्ट.*देख/i.test(finalNurseMessage);
+
+    if (assistantAnnouncedReportReady) {
+      parsedLlm.patient_consented_to_report = true;
+      parsedLlm.request_report_permission = false;
+      stateSnapshot.pendingReportPermission = false;
+      stateSnapshot.clinicalReportGenerated = true;
+    }
+
     // Safety and timing logic for Real-Time Clinical Assessment & Home Care generation:
     // Rule: The assessment report MUST NOT be generated after a single question or before follow-up completes.
     // It is ONLY generated in real-time when:
@@ -870,8 +897,15 @@ CLINICAL SOAP ASSESSMENT:
         /chest pain|difficulty breathing|breathless|unconscious|stroke|hemoptysis|cyanosis|seizure/i.test(rf)
       );
 
-    const isAskingPermission = parsedLlm.request_report_permission === true;
-    const patientConsented = parsedLlm.patient_consented_to_report === true || stateSnapshot.clinicalReportGenerated === true;
+    const isAskingPermission =
+      parsedLlm.request_report_permission === true &&
+      !parsedLlm.patient_consented_to_report &&
+      !assistantAnnouncedReportReady;
+
+    const patientConsented =
+      parsedLlm.patient_consented_to_report === true ||
+      stateSnapshot.clinicalReportGenerated === true ||
+      assistantAnnouncedReportReady;
 
     const shouldGenerateClinicalReport =
       isLifeThreateningEmergency ||
@@ -879,6 +913,7 @@ CLINICAL SOAP ASSESSMENT:
 
     if (shouldGenerateClinicalReport) {
       stateSnapshot.clinicalReportGenerated = true;
+      stateSnapshot.pendingReportPermission = false;
     }
 
     const isComplete = shouldGenerateClinicalReport;

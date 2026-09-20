@@ -9,6 +9,7 @@ import {
   Linking,
   ActivityIndicator,
   Alert,
+  TextInput,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,8 +36,11 @@ export const ClinicalResultsScreen: React.FC = () => {
 
   // Facility discovery state in Care Pathway tab
   const [isLoadingFacilities, setIsLoadingFacilities] = useState(false);
-  const [facilityResults, setFacilityResults] = useState<RecommendedFacility[]>([]);
+  const [nearbyFacilities, setNearbyFacilities] = useState<RecommendedFacility[]>([]);
+  const [regionalApexFacilities, setRegionalApexFacilities] = useState<RecommendedFacility[]>([]);
   const [facilitySearchLoc, setFacilitySearchLoc] = useState<string | null>(null);
+  const [customCityQuery, setCustomCityQuery] = useState<string>('');
+  const [showLocationInput, setShowLocationInput] = useState<boolean>(false);
 
   // Extract structured fields from clinicalOutput
   const safetyFindings = clinicalOutput.safety_findings || {};
@@ -204,57 +208,115 @@ export const ClinicalResultsScreen: React.FC = () => {
     }
   };
 
-  // Location-based hospital recommendation handler
-  const handleLocateSpecializedHospitals = async () => {
+  // Location-based hospital recommendation handler with real-time GPS & reverse geocoding
+  const handleLocateSpecializedHospitals = async (overrideCity?: string) => {
     setIsLoadingFacilities(true);
     try {
-      let { status } = await Location.requestForegroundPermissionsAsync();
       let coords: { latitude?: number; longitude?: number } = {};
+      let geocoded: Location.LocationGeocodedAddress | undefined = undefined;
 
-      if (status === 'granted') {
-        const locationData = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        coords = {
-          latitude: locationData.coords.latitude,
-          longitude: locationData.coords.longitude,
-        };
+      if (!overrideCity) {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const locationData = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+          coords = {
+            latitude: locationData.coords.latitude,
+            longitude: locationData.coords.longitude,
+          };
+
+          try {
+            const rev = await Location.reverseGeocodeAsync({
+              latitude: locationData.coords.latitude,
+              longitude: locationData.coords.longitude,
+            });
+            if (rev && rev.length > 0) {
+              geocoded = rev[0];
+            }
+          } catch (geoErr) {
+            console.warn('[ClinicalResults] Reverse geocode notice:', geoErr);
+          }
+        }
       }
+
+      const detectedCity = overrideCity || geocoded?.city || geocoded?.subregion || geocoded?.district || undefined;
+      const detectedDistrict = geocoded?.district || geocoded?.subregion || undefined;
+      const detectedState = geocoded?.region || undefined;
+      const locality = geocoded?.street || geocoded?.name || undefined;
+      const postalCode = geocoded?.postalCode || undefined;
+
+      const locSummary = overrideCity || [locality, detectedCity, detectedDistrict, detectedState].filter(Boolean).join(', ');
 
       const result = await fetchRecommendedFacilities({
         latitude: coords.latitude,
         longitude: coords.longitude,
+        city: detectedCity,
+        district: detectedDistrict,
+        state: detectedState,
+        postalCode,
+        locality,
+        locationQuery: locSummary || undefined,
         chiefComplaint,
         recommendedSpecialty,
         severityScore: riskScore ?? undefined,
         isEmergency,
       });
 
-      if (result && Array.isArray(result.matched_facilities)) {
-        setFacilityResults(result.matched_facilities);
-        setFacilitySearchLoc(result.search_location || null);
+      if (result) {
+        if (Array.isArray(result.nearby_facilities) && result.nearby_facilities.length > 0) {
+          setNearbyFacilities(result.nearby_facilities);
+        } else if (Array.isArray(result.matched_facilities)) {
+          setNearbyFacilities(result.matched_facilities.filter((f) => f.category !== 'regional_apex'));
+        }
+
+        if (Array.isArray(result.regional_apex_facilities) && result.regional_apex_facilities.length > 0) {
+          setRegionalApexFacilities(result.regional_apex_facilities);
+        } else if (Array.isArray(result.matched_facilities)) {
+          setRegionalApexFacilities(result.matched_facilities.filter((f) => f.category === 'regional_apex'));
+        }
+
+        setFacilitySearchLoc(result.search_location || locSummary || 'Your Location');
+        setShowLocationInput(false);
       }
     } catch (err: any) {
       console.warn('[ClinicalResults] Failed to fetch facilities:', err.message);
       Alert.alert(
         'Facility Search Notice',
-        'Could not obtain precise GPS coordinates. Providing regional specialized healthcare centers for your condition.'
+        'Could not obtain real-time GPS coordinates. Providing regional specialized healthcare centers for your condition.'
       );
-      // Fallback call without coordinates
+      // Fallback call
       try {
         const fallback = await fetchRecommendedFacilities({
           chiefComplaint,
           recommendedSpecialty,
           severityScore: riskScore ?? undefined,
           isEmergency,
+          city: overrideCity,
+          locationQuery: overrideCity,
         });
-        if (fallback?.matched_facilities) {
-          setFacilityResults(fallback.matched_facilities);
+        if (fallback?.nearby_facilities) {
+          setNearbyFacilities(fallback.nearby_facilities);
+          setRegionalApexFacilities(fallback.regional_apex_facilities || []);
+        } else if (fallback?.matched_facilities) {
+          setNearbyFacilities(fallback.matched_facilities.filter((f) => f.category !== 'regional_apex'));
+          setRegionalApexFacilities(fallback.matched_facilities.filter((f) => f.category === 'regional_apex'));
         }
+        setFacilitySearchLoc(fallback?.search_location || overrideCity || 'Regional Healthcare Centers');
       } catch (fallbackErr) {}
     } finally {
       setIsLoadingFacilities(false);
     }
+  };
+
+  // Direct Point-to-Point Map Navigation Handler
+  const handleOpenDirectNavigation = (fac: RecommendedFacility) => {
+    const url =
+      fac.maps_url ||
+      `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fac.facility_name + ', ' + fac.address)}&travelmode=driving`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Map Navigation', 'Could not launch map navigation application.');
+    });
   };
 
   // Share summary as text
@@ -301,6 +363,89 @@ export const ClinicalResultsScreen: React.FC = () => {
       console.warn('Share error:', err);
     }
   };
+
+  const renderFacilityCard = (fac: RecommendedFacility, idx: number, category: 'nearby' | 'regional_apex') => (
+    <Card key={`${category}-${idx}`} variant="default" style={[styles.facilityCard, category === 'regional_apex' && styles.apexCard]}>
+      <View style={styles.facilityHeader}>
+        <View style={{ flex: 1, marginRight: spacing.xs }}>
+          <Text style={styles.facilityName}>{fac.facility_name}</Text>
+          <Text style={styles.facilityType}>{fac.facility_type}</Text>
+        </View>
+        <View style={styles.headerBadgesCol}>
+          {fac.distance_km ? (
+            <View style={[styles.distanceBadge, category === 'regional_apex' && styles.apexDistanceBadge]}>
+              <Ionicons
+                name={category === 'regional_apex' ? 'business-outline' : 'navigate-circle'}
+                size={13}
+                color={category === 'regional_apex' ? '#6D28D9' : colors.primary}
+              />
+              <Text style={[styles.distanceBadgeText, category === 'regional_apex' && styles.apexDistanceText]}>
+                {fac.distance_km}
+              </Text>
+            </View>
+          ) : null}
+          <Badge
+            label={fac.tier}
+            variant={category === 'regional_apex' ? 'neutral' : 'mint'}
+            size="sm"
+            style={{ marginTop: 4 }}
+          />
+        </View>
+      </View>
+
+      <View style={[styles.specialtyMatchBox, category === 'regional_apex' && styles.apexMatchBox]}>
+        <Ionicons
+          name="medkit-outline"
+          size={14}
+          color={category === 'regional_apex' ? '#6D28D9' : colors.primaryDark}
+        />
+        <Text style={[styles.specialtyMatchText, category === 'regional_apex' && { color: '#4C1D95' }]}>
+          <Text style={{ fontWeight: 'bold' }}>Department:</Text> {fac.matched_specialty}
+        </Text>
+      </View>
+
+      {fac.match_rationale ? (
+        <Text style={styles.matchRationaleText}>{fac.match_rationale}</Text>
+      ) : null}
+
+      <View style={styles.facilityMetaRow}>
+        <View style={styles.metaItem}>
+          <Ionicons name="location-outline" size={13} color={colors.textSecondary} />
+          <Text style={styles.metaText}>{fac.address}</Text>
+        </View>
+        <View style={styles.metaItem}>
+          <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
+          <Text style={styles.metaText}>{fac.timings}</Text>
+        </View>
+        {fac.emergency_available ? (
+          <View style={styles.emergencyChipRow}>
+            <Ionicons name="shield-checkmark" size={12} color="#059669" />
+            <Text style={styles.emergencyChipText}>24/7 Verified Emergency & ICU Available</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.facilityActionsRow}>
+        {fac.contact_phone ? (
+          <TouchableOpacity
+            style={styles.facilityActionBtn}
+            onPress={() => Linking.openURL(`tel:${fac.contact_phone.replace(/[^0-9+]/g, '')}`)}
+          >
+            <Ionicons name="call-outline" size={15} color={colors.primary} />
+            <Text style={styles.facilityActionText}>Call Hospital</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        <TouchableOpacity
+          style={[styles.facilityActionBtn, styles.facilityNavBtn, category === 'regional_apex' && styles.apexNavBtn]}
+          onPress={() => handleOpenDirectNavigation(fac)}
+        >
+          <Ionicons name="navigate-outline" size={15} color="#FFFFFF" />
+          <Text style={styles.facilityNavText}>Start Navigation</Text>
+        </TouchableOpacity>
+      </View>
+    </Card>
+  );
 
   return (
     <ScreenContainer scrollable contentContainerStyle={styles.container}>
@@ -744,7 +889,7 @@ export const ClinicalResultsScreen: React.FC = () => {
             <Button
               title={isLoadingFacilities ? "Finding Specialized Hospitals..." : "Find Specialized Hospitals Near Me"}
               variant="primary"
-              onPress={handleLocateSpecializedHospitals}
+              onPress={() => handleLocateSpecializedHospitals()}
               disabled={isLoadingFacilities}
               icon={<Ionicons name="locate-outline" size={18} color="#FFFFFF" />}
               style={styles.locateBtn}
@@ -753,80 +898,124 @@ export const ClinicalResultsScreen: React.FC = () => {
             {isLoadingFacilities ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={styles.loadingText}>Analyzing regional healthcare centers specializing in {recommendedSpecialty}...</Text>
+                <Text style={styles.loadingText}>Detecting GPS location & finding specialized centers in your area...</Text>
               </View>
             ) : null}
           </Card>
 
-          {/* Matched Hospitals List */}
-          {facilityResults.length > 0 ? (
-            <View style={styles.facilitySection}>
-              <Text style={styles.subSectionTitle}>
-                Recommended Specialized Centers {facilitySearchLoc ? `(${facilitySearchLoc})` : ''}
-              </Text>
-              {facilityResults.map((fac: RecommendedFacility, idx: number) => (
-                <Card key={idx} variant="default" style={styles.facilityCard}>
-                  <View style={styles.facilityHeader}>
-                    <View style={{ flex: 1, marginRight: spacing.xs }}>
-                      <Text style={styles.facilityName}>{fac.facility_name}</Text>
-                      <Text style={styles.facilityType}>{fac.facility_type}</Text>
-                    </View>
-                    <Badge
-                      label={fac.tier}
-                      variant="mint"
-                      size="sm"
-                    />
-                  </View>
+          {/* Active Search & Verified Location Banner */}
+          {facilitySearchLoc ? (
+            <View style={styles.locationActiveBanner}>
+              <View style={styles.locationBannerLeft}>
+                <Ionicons name="navigate-circle" size={20} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.locationBannerTitle}>Location: {facilitySearchLoc}</Text>
+                  <Text style={styles.locationBannerSubtitle}>Sorted by proximity & {recommendedSpecialty} facilities</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowLocationInput(!showLocationInput)}
+                style={styles.changeLocBtn}
+              >
+                <Text style={styles.changeLocBtnText}>{showLocationInput ? 'Close' : 'Change City'}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
-                  <View style={styles.specialtyMatchBox}>
-                    <Ionicons name="medkit-outline" size={14} color={colors.primaryDark} />
-                    <Text style={styles.specialtyMatchText}>
-                      <Text style={{ fontWeight: 'bold' }}>Specialized Department:</Text> {fac.matched_specialty}
+          {/* Manual City / Location Override Card */}
+          {showLocationInput ? (
+            <Card variant="outlined" style={styles.manualLocCard}>
+              <Text style={styles.manualLocTitle}>Search Hospitals by City or Town</Text>
+              <View style={styles.manualLocInputRow}>
+                <TextInput
+                  placeholder="Enter city (e.g. Guntur, Hyderabad, Vijayawada)..."
+                  placeholderTextColor={colors.textMuted}
+                  value={customCityQuery}
+                  onChangeText={setCustomCityQuery}
+                  onSubmitEditing={() => customCityQuery.trim() && handleLocateSpecializedHospitals(customCityQuery.trim())}
+                  style={styles.manualLocInput}
+                />
+                <TouchableOpacity
+                  style={styles.manualLocSearchBtn}
+                  onPress={() => customCityQuery.trim() && handleLocateSpecializedHospitals(customCityQuery.trim())}
+                >
+                  <Ionicons name="search" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.quickCityRow}>
+                {['Guntur', 'Hyderabad', 'Vijayawada', 'Visakhapatnam', 'Tirupati'].map((cityName) => (
+                  <TouchableOpacity
+                    key={cityName}
+                    style={styles.quickCityPill}
+                    onPress={() => {
+                      setCustomCityQuery(cityName);
+                      handleLocateSpecializedHospitals(cityName);
+                    }}
+                  >
+                    <Text style={styles.quickCityText}>{cityName}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Card>
+          ) : null}
+
+          {/* CATEGORY 1: NEARBY VERIFIED CENTERS WITH REQUIRED SPECIALIZATION */}
+          {nearbyFacilities.length > 0 ? (
+            <View style={styles.facilitySection}>
+              <View style={styles.categoryHeaderRow}>
+                <View style={styles.categoryTitleGroup}>
+                  <View style={styles.categoryIconBadge}>
+                    <Ionicons name="location" size={16} color="#0D9488" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.categoryMainTitle}>
+                      Hospitals Near You ({facilitySearchLoc || 'Your Area'})
+                    </Text>
+                    <Text style={styles.categorySubTitle}>
+                      Verified local centers equipped for {recommendedSpecialty} & emergency care
                     </Text>
                   </View>
+                </View>
+                <Badge label="Nearby" variant="mint" size="sm" />
+              </View>
 
-                  {fac.match_rationale ? (
-                    <Text style={styles.matchRationaleText}>{fac.match_rationale}</Text>
-                  ) : null}
-
-                  <View style={styles.facilityMetaRow}>
-                    <View style={styles.metaItem}>
-                      <Ionicons name="location-outline" size={13} color={colors.textSecondary} />
-                      <Text style={styles.metaText}>{fac.address} {fac.distance_km ? `(${fac.distance_km})` : ''}</Text>
-                    </View>
-                    <View style={styles.metaItem}>
-                      <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
-                      <Text style={styles.metaText}>{fac.timings}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.facilityActionsRow}>
-                    {fac.contact_phone ? (
-                      <TouchableOpacity
-                        style={styles.facilityActionBtn}
-                        onPress={() => Linking.openURL(`tel:${fac.contact_phone.replace(/[^0-9+]/g, '')}`)}
-                      >
-                        <Ionicons name="call-outline" size={15} color={colors.primary} />
-                        <Text style={styles.facilityActionText}>Call Hospital</Text>
-                      </TouchableOpacity>
-                    ) : null}
-
-                    {fac.maps_url ? (
-                      <TouchableOpacity
-                        style={[styles.facilityActionBtn, styles.facilityMapBtn]}
-                        onPress={() => Linking.openURL(fac.maps_url)}
-                      >
-                        <Ionicons name="map-outline" size={15} color="#FFFFFF" />
-                        <Text style={[styles.facilityActionText, { color: '#FFFFFF' }]}>View on Map</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                </Card>
-              ))}
+              {nearbyFacilities.map((fac: RecommendedFacility, idx: number) =>
+                renderFacilityCard(fac, idx, 'nearby')
+              )}
             </View>
-          ) : !isLoadingFacilities ? (
+          ) : null}
+
+          {/* CATEGORY 2: ADVANCED APEX & REGIONAL CENTERS (SHOWN AT LAST) */}
+          {regionalApexFacilities.length > 0 ? (
+            <View style={[styles.facilitySection, styles.apexSection]}>
+              <View style={styles.categoryHeaderRow}>
+                <View style={styles.categoryTitleGroup}>
+                  <View style={[styles.categoryIconBadge, styles.apexIconBadge]}>
+                    <Ionicons name="business" size={16} color="#7C3AED" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.categoryMainTitle}>
+                      Advanced Regional & Apex Centers
+                    </Text>
+                    <Text style={styles.categorySubTitle}>
+                      Premier medical universities & quaternary institutes equipped for complex {recommendedSpecialty} care
+                    </Text>
+                  </View>
+                </View>
+                <Badge label="Apex Institutes" variant="neutral" size="sm" />
+              </View>
+
+              {regionalApexFacilities.map((fac: RecommendedFacility, idx: number) =>
+                renderFacilityCard(fac, idx, 'regional_apex')
+              )}
+            </View>
+          ) : null}
+
+          {nearbyFacilities.length === 0 && regionalApexFacilities.length === 0 && !isLoadingFacilities ? (
             <Card variant="outlined" style={styles.emptyCard}>
-              <Text style={styles.emptyText}>Tap "Find Specialized Hospitals Near Me" above to get verified facilities equipped for your condition.</Text>
+              <Text style={styles.emptyText}>
+                Tap "Find Specialized Hospitals Near Me" above to get verified facilities equipped for your condition.
+              </Text>
             </Card>
           ) : null}
         </View>
@@ -1517,22 +1706,163 @@ const styles = StyleSheet.create({
     color: colors.primary,
     flex: 1,
   },
+  /* Location Active Banner */
+  locationActiveBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F0FAF8',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(13, 148, 136, 0.25)',
+    padding: spacing.xs + 4,
+    marginBottom: spacing.xs,
+  },
+  locationBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  locationBannerTitle: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryDark,
+  },
+  locationBannerSubtitle: {
+    fontSize: typography.fontSize.xs - 2,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  changeLocBtn: {
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 4,
+    borderRadius: borderRadius.sm,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  changeLocBtnText: {
+    fontSize: typography.fontSize.xs - 2,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+  },
+
+  /* Manual Location Card */
+  manualLocCard: {
+    marginBottom: spacing.xs,
+    padding: spacing.xs + 2,
+    backgroundColor: '#FFFFFF',
+  },
+  manualLocTitle: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    marginBottom: 6,
+  },
+  manualLocInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  manualLocInput: {
+    flex: 1,
+    height: 38,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    fontSize: typography.fontSize.xs,
+    color: colors.textPrimary,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  manualLocSearchBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickCityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: spacing.xs,
+  },
+  quickCityPill: {
+    backgroundColor: '#E6F4F1',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(10, 77, 82, 0.15)',
+  },
+  quickCityText: {
+    fontSize: typography.fontSize.xs - 2,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.primaryDark,
+  },
+
+  /* Category Headers */
+  categoryHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.xs,
+    marginTop: 4,
+  },
+  categoryTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    flex: 1,
+    paddingRight: 6,
+  },
+  categoryIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#E6F4F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(13, 148, 136, 0.2)',
+  },
+  categoryMainTitle: {
+    fontSize: typography.fontSize.xs + 1,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryDark,
+  },
+  categorySubTitle: {
+    fontSize: typography.fontSize.xs - 2,
+    color: colors.textSecondary,
+    marginTop: 1,
+    lineHeight: 14,
+  },
+  apexSection: {
+    marginTop: spacing.md,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSubtle,
+  },
+  apexIconBadge: {
+    backgroundColor: '#F5F3FF',
+    borderColor: 'rgba(124, 58, 237, 0.2)',
+  },
+
   facilitySection: {
     marginTop: spacing.xs,
     gap: spacing.xs,
   },
-  subSectionTitle: {
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: spacing.xs,
-  },
   facilityCard: {
-    marginBottom: spacing.sm,
-    borderWidth: 1,
+    marginBottom: spacing.xs + 2,
+    borderWidth: 1.2,
     borderColor: 'rgba(10, 77, 82, 0.12)',
+  },
+  apexCard: {
+    borderColor: 'rgba(124, 58, 237, 0.2)',
+    backgroundColor: '#FAF5FF',
   },
   facilityHeader: {
     flexDirection: 'row',
@@ -1549,6 +1879,33 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginTop: 2,
   },
+  headerBadgesCol: {
+    alignItems: 'flex-end',
+  },
+  distanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#E6F4F1',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(13, 148, 136, 0.25)',
+  },
+  distanceBadgeText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primaryDark,
+  },
+  apexDistanceBadge: {
+    backgroundColor: '#EDE9FE',
+    borderColor: 'rgba(124, 58, 237, 0.3)',
+  },
+  apexDistanceText: {
+    color: '#6D28D9',
+  },
+
   specialtyMatchBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1557,6 +1914,9 @@ const styles = StyleSheet.create({
     padding: spacing.xs,
     borderRadius: borderRadius.sm - 2,
     marginTop: spacing.xs,
+  },
+  apexMatchBox: {
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
   },
   specialtyMatchText: {
     fontSize: typography.fontSize.xs - 1,
@@ -1586,6 +1946,18 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     flex: 1,
   },
+  emergencyChipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  emergencyChipText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeight.semiBold,
+    color: '#059669',
+  },
+
   facilityActionsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -1598,19 +1970,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: spacing.xs + 2,
+    paddingVertical: spacing.xs + 3,
     borderRadius: borderRadius.sm,
     borderWidth: 1,
     borderColor: colors.primary,
   },
-  facilityMapBtn: {
+  facilityNavBtn: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  apexNavBtn: {
+    backgroundColor: '#6D28D9',
+    borderColor: '#6D28D9',
   },
   facilityActionText: {
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.bold,
     color: colors.primary,
+  },
+  facilityNavText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: '#FFFFFF',
   },
   trackedRemedyBox: {
     backgroundColor: colors.surfaceSubtle,

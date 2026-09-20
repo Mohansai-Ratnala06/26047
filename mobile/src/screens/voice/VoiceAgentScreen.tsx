@@ -176,6 +176,15 @@ export const VoiceAgentScreen: React.FC = () => {
   const audioStatus = useAudioPlayerStatus(audioPlayer);
   const [lastAudioBase64, setLastAudioBase64] = useState<string | null>(null);
   const [isSynthesizingTts, setIsSynthesizingTts] = useState(false);
+  const [activeAudioMsgId, setActiveAudioMsgId] = useState<string | null>(null);
+  const [loadingAudioMsgId, setLoadingAudioMsgId] = useState<string | null>(null);
+
+  // Automatically reset active audio message when playback finishes
+  useEffect(() => {
+    if (audioStatus.didJustFinish) {
+      setActiveAudioMsgId(null);
+    }
+  }, [audioStatus.didJustFinish]);
 
   // -------------------------------------------------------------
   // ANIMATIONS FOR FLUID ORGANIC ORB & GLOW
@@ -257,9 +266,11 @@ export const VoiceAgentScreen: React.FC = () => {
   const playSpokenAudio = async (base64Audio: string) => {
     try {
       setLastAudioBase64(base64Audio);
+      // Clean potential data-URI header prefix to avoid base64 decoding corruption
+      const cleanBase64 = base64Audio.replace(/^data:audio\/[^;]+;base64,/, '').trim();
       // Generate a unique timestamped URI to prevent OS-level file caching and lock collisions
       const audioUri = `${FileSystem.cacheDirectory}vaidya_tts_${Date.now()}.wav`;
-      await FileSystem.writeAsStringAsync(audioUri, base64Audio, {
+      await FileSystem.writeAsStringAsync(audioUri, cleanBase64, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
@@ -268,6 +279,10 @@ export const VoiceAgentScreen: React.FC = () => {
         playsInSilentMode: true,
       });
 
+      if (audioStatus.playing) {
+        audioPlayer.pause();
+      }
+
       audioPlayer.replace(audioUri);
       audioPlayer.play();
     } catch (playErr: any) {
@@ -275,18 +290,45 @@ export const VoiceAgentScreen: React.FC = () => {
     }
   };
 
-  const handlePlayMessageAudio = async (text: string, base64Audio?: string) => {
-    if (audioStatus.playing) {
+  const handlePlayMessageAudio = async (messageId: string, text: string, base64Audio?: string) => {
+    // If THIS specific message is currently playing, tap will pause it
+    if (activeAudioMsgId === messageId && audioStatus.playing) {
       audioPlayer.pause();
       return;
     }
 
+    // If THIS message is currently paused, tap will resume playback
+    if (activeAudioMsgId === messageId && !audioStatus.playing && lastAudioBase64) {
+      audioPlayer.play();
+      return;
+    }
+
+    // If another message was playing, pause it before switching tracks
+    if (audioStatus.playing) {
+      audioPlayer.pause();
+    }
+
+    setActiveAudioMsgId(messageId);
+
+    // If audio is already directly attached to this message item
     if (base64Audio) {
       await playSpokenAudio(base64Audio);
-    } else if (text && text.trim()) {
+      return;
+    }
+
+    // Check if audio was previously synthesized and cached in chatMessages state
+    const cachedMsg = chatMessages.find((m) => m.id === messageId);
+    if (cachedMsg?.audioBase64) {
+      await playSpokenAudio(cachedMsg.audioBase64);
+      return;
+    }
+
+    // On-demand speech synthesis from backend TTS service
+    if (text && text.trim()) {
       try {
+        setLoadingAudioMsgId(messageId);
         setIsSynthesizingTts(true);
-        setSttStatus('Synthesizing speech...');
+        setSttStatus('Generating voice response...');
 
         // Auto-detect language code based on text characters or detectedLanguage
         const targetLang = /[\u0C00-\u0C7F]/.test(text)
@@ -300,17 +342,23 @@ export const VoiceAgentScreen: React.FC = () => {
           : (detectedLanguage || 'en-IN');
 
         const ttsRes = await ttsApi.synthesizeSpeech(text, targetLang);
-        if (ttsRes.success && ttsRes.data?.audioBase64) {
-          const freshAudio = ttsRes.data.audioBase64;
+        const freshAudio = (ttsRes as any)?.data?.audioBase64 || (ttsRes as any)?.audioBase64;
+
+        if (freshAudio) {
           // Cache audio onto message state so subsequent speaker taps are immediate
           setChatMessages((prev) =>
-            prev.map((msg) => (msg.content === text ? { ...msg, audioBase64: freshAudio } : msg))
+            prev.map((msg) => (msg.id === messageId ? { ...msg, audioBase64: freshAudio } : msg))
           );
           await playSpokenAudio(freshAudio);
+        } else {
+          console.warn('[VoiceAgentScreen] No audio returned from TTS synthesis');
+          setActiveAudioMsgId(null);
         }
       } catch (ttsErr: any) {
         console.warn('[VoiceAgentScreen] Speech synthesis failed:', ttsErr?.message || ttsErr);
+        setActiveAudioMsgId(null);
       } finally {
+        setLoadingAudioMsgId(null);
         setIsSynthesizingTts(false);
         setSttStatus(null);
       }
@@ -326,7 +374,12 @@ export const VoiceAgentScreen: React.FC = () => {
     if (lastAudioBase64) {
       await playSpokenAudio(lastAudioBase64);
     } else if (brainResponse?.assistantMessage?.content) {
-      await handlePlayMessageAudio(brainResponse.assistantMessage.content);
+      const assistantId = brainResponse.assistantMessage._id || 'latest_assistant';
+      await handlePlayMessageAudio(
+        assistantId,
+        brainResponse.assistantMessage.content,
+        brainResponse.audioBase64
+      );
     }
   };
 
@@ -349,6 +402,11 @@ export const VoiceAgentScreen: React.FC = () => {
 
   const handleSelectHistoricalEpisode = async (selectedEpId: string) => {
     try {
+      if (audioStatus.playing) {
+        audioPlayer.pause();
+      }
+      setActiveAudioMsgId(null);
+      setLoadingAudioMsgId(null);
       setIsLoadingHistory(true);
       setActiveEpisodeId(selectedEpId);
 
@@ -372,14 +430,34 @@ export const VoiceAgentScreen: React.FC = () => {
           const patientMsgs = messagesList.filter((m: any) => m.role === 'patient');
           const lastPatient = patientMsgs[patientMsgs.length - 1];
 
+          // Check if any assistant message in the episode contains clinicalOutput
+          const assistantWithClinicalOutput = [...assistantMsgs].reverse().find(
+            (m: any) => m.structuredData?.clinical_output
+          );
+          let foundClinicalOutput =
+            assistantWithClinicalOutput?.structuredData?.clinical_output ||
+            lastAssistant.structuredData?.clinical_output ||
+            null;
+
+          // Fallback: check Episode document directly in case clinicalOutput was stored on ep.clinicalOutput
+          if (!foundClinicalOutput) {
+            try {
+              const epRes = await episodeApi.getEpisodeById(selectedEpId);
+              const epData = (epRes as any)?.data || epRes;
+              if (epData?.clinicalOutput) {
+                foundClinicalOutput = epData.clinicalOutput;
+              }
+            } catch (_) {}
+          }
+
           setBrainResponse({
             patientMessage: lastPatient || ({} as any),
             assistantMessage: lastAssistant,
             turnStatus: 'complete',
             immediateAttentionRequired: Boolean(lastAssistant.structuredData?.immediate_attention_required),
-            informationComplete: Boolean(lastAssistant.structuredData?.clinical_output),
+            informationComplete: Boolean(foundClinicalOutput || lastAssistant.structuredData?.clinical_output),
             missingInformation: [],
-            clinicalOutput: lastAssistant.structuredData?.clinical_output || null,
+            clinicalOutput: foundClinicalOutput,
           });
           setTranscript(lastPatient?.content || '');
         } else {
@@ -402,6 +480,8 @@ export const VoiceAgentScreen: React.FC = () => {
     if (audioStatus.playing) {
       audioPlayer.pause();
     }
+    setActiveAudioMsgId(null);
+    setLoadingAudioMsgId(null);
     setActiveEpisodeId(null);
     setConversationId(null);
     setBrainResponse(null);
@@ -677,6 +757,8 @@ export const VoiceAgentScreen: React.FC = () => {
 
       // Auto-play audio response in voice mode or if audio is returned
       if (turnData.audioBase64 && (inputType === 'voice' || activeMode === 'voice')) {
+        const assistantMsgId = turnData.assistantMessage?._id || String(Date.now() + 1);
+        setActiveAudioMsgId(assistantMsgId);
         await playSpokenAudio(turnData.audioBase64);
       }
     } catch (brainErr: any) {
@@ -737,11 +819,11 @@ export const VoiceAgentScreen: React.FC = () => {
 
         <View style={styles.headerRightActions}>
           {/* Quick Header Assessment Button (Direct access when clinical output is available) */}
-          {brainResponse?.clinicalOutput ? (
+          {(brainResponse?.clinicalOutput || chatMessages.some((m) => m.clinicalOutput)) ? (
             <TouchableOpacity
               onPress={() =>
                 navigation.navigate('ClinicalResults', {
-                  clinicalOutput: brainResponse.clinicalOutput!,
+                  clinicalOutput: (brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)!,
                   conversationId: conversationId || undefined,
                 })
               }
@@ -954,22 +1036,30 @@ export const VoiceAgentScreen: React.FC = () => {
                             <TouchableOpacity
                               onPress={() =>
                                 handlePlayMessageAudio(
+                                  turn.assistantMsg!.id,
                                   turn.assistantMsg!.content,
                                   turn.assistantMsg!.audioBase64
                                 )
                               }
                               style={styles.miniAudioBtn}
                               accessibilityLabel="Listen to Response"
+                              disabled={loadingAudioMsgId === turn.assistantMsg!.id}
                             >
-                              <Ionicons
-                                name={
-                                  audioStatus.playing && lastAudioBase64 === turn.assistantMsg.audioBase64
-                                    ? 'pause'
-                                    : 'volume-high'
-                                }
-                                size={18}
-                                color={colors.primary}
-                              />
+                              {loadingAudioMsgId === turn.assistantMsg!.id ? (
+                                <ActivityIndicator size="small" color={colors.primary} />
+                              ) : (
+                                <Ionicons
+                                  name={
+                                    activeAudioMsgId === turn.assistantMsg!.id && audioStatus.playing
+                                      ? 'pause'
+                                      : activeAudioMsgId === turn.assistantMsg!.id && !audioStatus.playing
+                                      ? 'play'
+                                      : 'volume-high'
+                                  }
+                                  size={18}
+                                  color={colors.primary}
+                                />
+                              )}
                             </TouchableOpacity>
                           </View>
                           <Text style={styles.liveVoiceAssistantText}>
@@ -1009,6 +1099,55 @@ export const VoiceAgentScreen: React.FC = () => {
                         </Text>
                       </Card>
                     ) : null}
+
+                    {/* Grounded Clinical Assessment or Escalation Card attached directly to the latest turn */}
+                    {isLatestTurn && (turnClinicalOutput || brainResponse?.clinicalOutput) ? (
+                      ((turnClinicalOutput || brainResponse?.clinicalOutput)?.consultation_recommended ||
+                       (turnClinicalOutput || brainResponse?.clinicalOutput)?.immediateAttentionRequired ||
+                       ((turnClinicalOutput || brainResponse?.clinicalOutput)?.severity_score && (turnClinicalOutput || brainResponse?.clinicalOutput).severity_score >= 60)) ? (
+                        <View style={styles.chatEscalationCard}>
+                          <View style={styles.escalationHeaderRow}>
+                            <Ionicons name="medical" size={18} color={colors.error} />
+                            <Text style={styles.escalationTitle}>Physician Consultation Recommended</Text>
+                          </View>
+                          <Text style={styles.escalationDesc}>
+                            Your Smart Health Companion has prepared your complete Pre-Consultation Summary for your physician.
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.chatEscalationBtn}
+                            onPress={() =>
+                              navigation.navigate('ClinicalResults', {
+                                clinicalOutput: (turnClinicalOutput || brainResponse?.clinicalOutput)!,
+                                conversationId: conversationId || undefined,
+                              })
+                            }
+                          >
+                            <Ionicons name="document-text-outline" size={16} color="#FFFFFF" />
+                            <Text style={styles.chatEscalationBtnText}>Preview Pre-Consultation Summary</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.chatReportCardBtn}
+                          onPress={() =>
+                            navigation.navigate('ClinicalResults', {
+                              clinicalOutput: (turnClinicalOutput || brainResponse?.clinicalOutput)!,
+                              conversationId: conversationId || undefined,
+                            })
+                          }
+                          activeOpacity={0.88}
+                        >
+                          <View style={styles.chatReportIconWrap}>
+                            <Ionicons name="document-text" size={18} color={colors.primary} />
+                          </View>
+                          <View style={styles.chatReportTextCol}>
+                            <Text style={styles.chatReportTitle}>Clinical Assessment Report Ready</Text>
+                            <Text style={styles.chatReportSubtitle}>Tap to view triage analysis & Daśavidha assessment</Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+                        </TouchableOpacity>
+                      )
+                    ) : null}
                   </View>
                 );
               })}
@@ -1030,8 +1169,8 @@ export const VoiceAgentScreen: React.FC = () => {
             </GlassCard>
           ) : null}
 
-          {/* In-Voice Mode Grounded Clinical Assessment or Escalation Card */}
-          {brainResponse?.clinicalOutput ? (
+          {/* In-Voice Mode Grounded Clinical Assessment Card fallback if no turns container active */}
+          {chatMessages.length === 0 && brainResponse?.clinicalOutput ? (
             brainResponse?.clinicalOutput?.consultation_recommended ||
             brainResponse?.immediateAttentionRequired ||
             (brainResponse?.clinicalOutput?.severity_score && brainResponse.clinicalOutput.severity_score >= 60) ? (
@@ -1176,20 +1315,35 @@ export const VoiceAgentScreen: React.FC = () => {
                     {/* Audio Play Button on Assistant Bubble */}
                     {msg.role === 'assistant' ? (
                       <TouchableOpacity
-                        onPress={() => handlePlayMessageAudio(msg.content, msg.audioBase64)}
+                        onPress={() => handlePlayMessageAudio(msg.id, msg.content, msg.audioBase64)}
                         style={styles.chatBubbleAudioBtn}
                         accessibilityLabel="Listen to Message"
+                        disabled={loadingAudioMsgId === msg.id}
                       >
-                        <Ionicons
-                          name={
-                            audioStatus.playing && lastAudioBase64 === msg.audioBase64
-                              ? 'pause'
-                              : 'volume-high-outline'
-                          }
-                          size={16}
-                          color={colors.primary}
-                        />
-                        <Text style={styles.chatBubbleAudioLabel}>Listen</Text>
+                        {loadingAudioMsgId === msg.id ? (
+                          <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 4 }} />
+                        ) : (
+                          <Ionicons
+                            name={
+                              activeAudioMsgId === msg.id && audioStatus.playing
+                                ? 'pause'
+                                : activeAudioMsgId === msg.id && !audioStatus.playing
+                                ? 'play'
+                                : 'volume-high-outline'
+                            }
+                            size={16}
+                            color={colors.primary}
+                          />
+                        )}
+                        <Text style={styles.chatBubbleAudioLabel}>
+                          {loadingAudioMsgId === msg.id
+                            ? 'Loading...'
+                            : activeAudioMsgId === msg.id && audioStatus.playing
+                            ? 'Pause'
+                            : activeAudioMsgId === msg.id && !audioStatus.playing
+                            ? 'Resume'
+                            : 'Listen'}
+                        </Text>
                       </TouchableOpacity>
                     ) : null}
 
@@ -1226,10 +1380,10 @@ export const VoiceAgentScreen: React.FC = () => {
             ) : null}
 
             {/* In-feed Clinical Assessment or Escalation card in Chat Mode */}
-            {brainResponse?.clinicalOutput ? (
-              brainResponse?.clinicalOutput?.consultation_recommended ||
-              brainResponse?.immediateAttentionRequired ||
-              (brainResponse?.clinicalOutput?.severity_score && brainResponse.clinicalOutput.severity_score >= 60) ? (
+            {(brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput) ? (
+              ((brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)?.consultation_recommended ||
+               (brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)?.immediateAttentionRequired ||
+               ((brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)?.severity_score && (brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput).severity_score >= 60)) ? (
                 <View style={styles.chatEscalationCard}>
                   <View style={styles.escalationHeaderRow}>
                     <Ionicons name="medical" size={18} color={colors.error} />
@@ -1242,7 +1396,7 @@ export const VoiceAgentScreen: React.FC = () => {
                     style={styles.chatEscalationBtn}
                     onPress={() =>
                       navigation.navigate('ClinicalResults', {
-                        clinicalOutput: brainResponse.clinicalOutput!,
+                        clinicalOutput: (brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)!,
                         conversationId: conversationId || undefined,
                       })
                     }
@@ -1256,7 +1410,7 @@ export const VoiceAgentScreen: React.FC = () => {
                   style={styles.chatReportCardBtn}
                   onPress={() =>
                     navigation.navigate('ClinicalResults', {
-                      clinicalOutput: brainResponse.clinicalOutput!,
+                      clinicalOutput: (brainResponse?.clinicalOutput || chatMessages.find((m) => m.clinicalOutput)?.clinicalOutput)!,
                       conversationId: conversationId || undefined,
                     })
                   }
@@ -1877,9 +2031,15 @@ const styles = StyleSheet.create({
   chatBubbleAudioBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 6,
+    gap: 5,
+    marginTop: 8,
     alignSelf: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
   },
   chatBubbleAudioLabel: {
     fontSize: typography.fontSize.xs,

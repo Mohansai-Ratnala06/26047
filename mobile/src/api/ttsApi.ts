@@ -22,19 +22,30 @@ export const ttsApi = {
    * @param language The target language code (e.g. 'te-IN', 'hi-IN', 'en-IN')
    */
   synthesizeSpeech: async (text: string, language?: string): Promise<TtsResponse> => {
-    const res = await apiClient.post<TtsResponse>('/tts/synthesize', {
+    const res: any = await apiClient.post('/tts/synthesize', {
       text,
       language,
     });
-    return res.data;
+    // apiClient response interceptor already returns response.data
+    // Backend returns: { success: true, data: { success: true, audioBase64: '...', mimeType: 'audio/wav', ... } }
+    if (res && res.data && typeof res.data.audioBase64 === 'string') {
+      return res as TtsResponse;
+    }
+    if (res && typeof res.audioBase64 === 'string') {
+      return {
+        success: true,
+        data: res,
+      };
+    }
+    return res;
   },
 
   /**
    * Health probe for the Text-to-Speech service.
    */
   checkHealth: async (): Promise<any> => {
-    const res = await apiClient.get('/tts/health');
-    return res.data;
+    const res: any = await apiClient.get('/tts/health');
+    return res;
   },
 };
 

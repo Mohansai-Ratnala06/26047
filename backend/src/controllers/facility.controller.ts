@@ -7,6 +7,11 @@ export const recommendFacilities = async (req: Request, res: Response) => {
     const {
       latitude,
       longitude,
+      city,
+      district,
+      state,
+      postalCode,
+      locality,
       locationQuery,
       chiefComplaint,
       recommendedSpecialty,
@@ -25,6 +30,11 @@ export const recommendFacilities = async (req: Request, res: Response) => {
     const result = await facilityRecommendationService.recommendSpecializedFacilities({
       latitude: typeof latitude === 'number' ? latitude : undefined,
       longitude: typeof longitude === 'number' ? longitude : undefined,
+      city: typeof city === 'string' ? city : undefined,
+      district: typeof district === 'string' ? district : undefined,
+      state: typeof state === 'string' ? state : undefined,
+      postalCode: typeof postalCode === 'string' ? postalCode : undefined,
+      locality: typeof locality === 'string' ? locality : undefined,
       locationQuery: typeof locationQuery === 'string' ? locationQuery : undefined,
       chiefComplaint,
       recommendedSpecialty,

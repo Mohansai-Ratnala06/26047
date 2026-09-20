@@ -213,6 +213,7 @@ export const sendMessage = async (req: Request, res: Response) => {
         immediate_attention_required: turnResponse.immediate_attention_required,
         red_flag_status: turnResponse.red_flag_status,
         red_flags: turnResponse.red_flags,
+        clinical_output: turnResponse.clinical_output || null,
       },
       timestamp: new Date(),
     });
